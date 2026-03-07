@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Herr-Raza Lernapp</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<header>
+  <div class="header-inner">
+    <h1>🎓 Herr-Raza Lernapp</h1>
+    <span id="ai-badge" class="badge {{ 'badge-green' if ai_available else 'badge-gray' }}">
+      {{ '✅ KI-Tutor aktiv' if ai_available else '⚡ Basis-Modus (ohne KI)' }}
+    </span>
+  </div>
+  <nav>
+    <button class="nav-btn active" data-section="home">🏠 Start</button>
+    <button class="nav-btn" data-section="quiz">❓ Quiz</button>
+    <button class="nav-btn" data-section="tutor">🤖 KI-Tutor</button>
+    <button class="nav-btn" data-section="explain">📖 Nachschlagen</button>
+    <button class="nav-btn" data-section="flashcards">🃏 Lernkarten</button>
+    <button class="nav-btn" data-section="progress">📊 Fortschritt</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- HOME                                                                       -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<section id="home" class="section active">
+  <div class="hero">
+    <h2>Willkommen zur Lernapp! 👋</h2>
+    <p>Deine intelligente Lernplattform für den Schulunterricht.<br>
+       Wähle einen Bereich, um loszulegen.</p>
+  </div>
+  <div class="card-grid">
+    <div class="feature-card" onclick="showSection('quiz')">
+      <div class="card-icon">❓</div>
+      <h3>Quiz</h3>
+      <p>Teste dein Wissen mit Quizfragen aus verschiedenen Fächern. Kostenlos via Open Trivia DB oder KI-generiert.</p>
+    </div>
+    <div class="feature-card" onclick="showSection('tutor')">
+      <div class="card-icon">🤖</div>
+      <h3>KI-Tutor</h3>
+      <p>Stelle dem KI-Tutor Fragen zu jedem Schulthema und erhalte verständliche Erklärungen.</p>
+    </div>
+    <div class="feature-card" onclick="showSection('explain')">
+      <div class="card-icon">📖</div>
+      <h3>Nachschlagen</h3>
+      <p>Suche Begriffe in Wikipedia und erhalte einfache, schülergerechte Zusammenfassungen.</p>
+    </div>
+    <div class="feature-card" onclick="showSection('flashcards')">
+      <div class="card-icon">🃏</div>
+      <h3>Lernkarten</h3>
+      <p>Erstelle KI-generierte Lernkarten zu jedem Thema und übe mit dem Karteikarten-Prinzip.</p>
+    </div>
+  </div>
+
+  <div class="info-box">
+    <strong>💡 Verwendete kostenlose APIs:</strong>
+    <ul>
+      <li><a href="https://opentdb.com" target="_blank">Open Trivia Database</a> — Tausende Quizfragen, kein API-Key nötig</li>
+      <li><a href="https://www.mediawiki.org/wiki/API" target="_blank">Wikipedia REST API</a> — Wissensdatenbank, komplett kostenlos</li>
+      {% if ai_available %}
+      <li>Claude Haiku (Anthropic) — KI-Tutor und Inhaltsgenerierung</li>
+      {% else %}
+      <li>Claude Haiku (Anthropic) — <em>Nicht konfiguriert (ANTHROPIC_API_KEY fehlt)</em></li>
+      {% endif %}
+    </ul>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- QUIZ                                                                       -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<section id="quiz" class="section">
+  <h2>❓ Quiz</h2>
+
+  <div id="quiz-setup" class="card">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Modus</label>
+        <select id="quiz-mode">
+          <option value="trivia">🌍 Open Trivia (kostenlos)</option>
+          <option value="ai" {% if not ai_available %}disabled{% endif %}>🤖 KI-generiert{% if not ai_available %} (kein API-Key){% endif %}</option>
+        </select>
+      </div>
+      <div class="form-group" id="trivia-category-group">
+        <label>Kategorie</label>
+        <select id="trivia-category">
+          <option value="">Alle Kategorien</option>
+          <option value="9">Allgemeinwissen</option>
+          <option value="17">Wissenschaft & Natur</option>
+          <option value="23">Geschichte</option>
+          <option value="18">Informatik</option>
+          <option value="22">Geographie</option>
+          <option value="25">Kunst</option>
+          <option value="21">Sport</option>
+          <option value="26">Prominente</option>
+        </select>
+      </div>
+      <div class="form-group" id="ai-topic-group" style="display:none">
+        <label>Thema (KI-Modus)</label>
+        <input type="text" id="quiz-topic" placeholder="z.B. Photosynthese, WW2, Pythagoras..." />
+      </div>
+      <div class="form-group">
+        <label>Schwierigkeit</label>
+        <select id="quiz-difficulty">
+          <option value="easy">Leicht</option>
+          <option value="medium" selected>Mittel</option>
+          <option value="hard">Schwer</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Anzahl Fragen</label>
+        <select id="quiz-amount">
+          <option value="3">3</option>
+          <option value="5" selected>5</option>
+          <option value="10">10</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="startQuiz()">Quiz starten 🚀</button>
+  </div>
+
+  <div id="quiz-game" style="display:none">
+    <div class="quiz-header">
+      <span id="quiz-progress">Frage 1/5</span>
+      <span id="quiz-score">Punkte: 0</span>
+    </div>
+    <div id="quiz-question-card" class="card quiz-card"></div>
+    <div id="quiz-result" class="card" style="display:none">
+      <h3>Ergebnis 🎉</h3>
+      <p id="result-text"></p>
+      <button class="btn btn-primary" onclick="resetQuiz()">Neues Quiz</button>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- KI-TUTOR                                                                   -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<section id="tutor" class="section">
+  <h2>🤖 KI-Tutor</h2>
+  {% if not ai_available %}
+  <div class="alert alert-warn">
+    ⚠️ Kein ANTHROPIC_API_KEY gesetzt. Der KI-Tutor ist deaktiviert.
+    Setze die Umgebungsvariable und starte die App neu.
+  </div>
+  {% endif %}
+
+  <div class="form-row" style="margin-bottom:1rem">
+    <div class="form-group">
+      <label>Fach</label>
+      <select id="tutor-subject">
+        <option>Mathematik</option>
+        <option>Physik</option>
+        <option>Chemie</option>
+        <option>Biologie</option>
+        <option>Geschichte</option>
+        <option>Geographie</option>
+        <option>Deutsch</option>
+        <option>Englisch</option>
+        <option>Informatik</option>
+        <option>Allgemein</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="chat-messages" class="chat-box">
+    <div class="chat-msg assistant">
+      Hallo! Ich bin dein KI-Tutor. 👋 Welche Frage hast du?
+    </div>
+  </div>
+
+  <div class="chat-input-row">
+    <input type="text" id="tutor-input" placeholder="Deine Frage eingeben..."
+           onkeydown="if(event.key==='Enter') sendTutorMessage()" />
+    <button class="btn btn-primary" onclick="sendTutorMessage()" {% if not ai_available %}disabled{% endif %}>
+      Senden
+    </button>
+  </div>
+  <button class="btn btn-secondary" onclick="clearChat()" style="margin-top:.5rem">🗑️ Chat löschen</button>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- NACHSCHLAGEN                                                               -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<section id="explain" class="section">
+  <h2>📖 Begriff nachschlagen</h2>
+
+  <div class="card">
+    <div class="form-row">
+      <div class="form-group" style="flex:1">
+        <label>Begriff / Thema</label>
+        <input type="text" id="explain-topic" placeholder="z.B. Photosynthese, Demokratie, Pythagoras..."
+               onkeydown="if(event.key==='Enter') lookupTopic()" />
+      </div>
+      <div class="form-group">
+        <label>Sprache</label>
+        <select id="explain-lang">
+          <option value="de">Deutsch</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="lookupTopic()">Nachschlagen 🔍</button>
+  </div>
+
+  <div id="explain-result" style="display:none" class="card">
+    <div id="explain-header" style="display:flex;gap:1rem;align-items:flex-start">
+      <img id="explain-thumb" src="" alt="" style="max-width:120px;border-radius:8px;display:none" />
+      <div>
+        <h3 id="explain-title"></h3>
+        <a id="explain-link" href="#" target="_blank" class="wiki-link">Wikipedia öffnen ↗</a>
+      </div>
+    </div>
+    <div id="ai-summary-box" class="ai-summary" style="display:none">
+      <strong>🤖 KI-Zusammenfassung:</strong>
+      <p id="ai-summary-text"></p>
+    </div>
+    <div class="wiki-text">
+      <strong>Wikipedia:</strong>
+      <p id="explain-extract"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- LERNKARTEN                                                                 -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<section id="flashcards" class="section">
+  <h2>🃏 Lernkarten</h2>
+  {% if not ai_available %}
+  <div class="alert alert-warn">
+    ⚠️ Lernkarten benötigen den KI-Tutor (ANTHROPIC_API_KEY).
+  </div>
+  {% endif %}
+
+  <div class="card" id="fc-setup">
+    <div class="form-row">
+      <div class="form-group" style="flex:1">
+        <label>Thema</label>
+        <input type="text" id="fc-topic" placeholder="z.B. Weltkrieg II, Mengenlehre, Ökosystem..."
+               onkeydown="if(event.key==='Enter') generateFlashcards()" />
+      </div>
+      <div class="form-group">
+        <label>Anzahl</label>
+        <select id="fc-amount">
+          <option value="5">5</option>
+          <option value="8" selected>8</option>
+          <option value="12">12</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="generateFlashcards()" {% if not ai_available %}disabled{% endif %}>
+      Lernkarten erstellen 🃏
+    </button>
+  </div>
+
+  <div id="fc-area" style="display:none">
+    <div class="fc-controls">
+      <button class="btn btn-secondary" onclick="prevCard()">◀ Zurück</button>
+      <span id="fc-counter">1 / 8</span>
+      <button class="btn btn-secondary" onclick="nextCard()">Weiter ▶</button>
+    </div>
+    <div id="fc-card" class="flashcard" onclick="flipCard()">
+      <div class="flashcard-inner" id="fc-inner">
+        <div class="flashcard-front" id="fc-front"></div>
+        <div class="flashcard-back" id="fc-back"></div>
+      </div>
+    </div>
+    <p style="text-align:center;color:#666;margin-top:.5rem">Klicke auf die Karte zum Umdrehen</p>
+    <div class="fc-mark-row">
+      <button class="btn btn-danger" onclick="markCard('wrong')">❌ Falsch</button>
+      <button class="btn btn-success" onclick="markCard('correct')">✅ Richtig</button>
+    </div>
+    <div id="fc-summary" style="display:none" class="card">
+      <h3>Lernkarten abgeschlossen! 🎉</h3>
+      <p id="fc-summary-text"></p>
+      <button class="btn btn-primary" onclick="restartFlashcards()">Nochmal</button>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- FORTSCHRITT                                                                -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<section id="progress" class="section">
+  <h2>📊 Mein Fortschritt</h2>
+  <div class="card-grid" id="progress-stats">
+    <div class="stat-card">
+      <div class="stat-number" id="stat-quizzes">0</div>
+      <div class="stat-label">Quizze gespielt</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-correct">0</div>
+      <div class="stat-label">Richtige Antworten</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-accuracy">0%</div>
+      <div class="stat-label">Trefferquote</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-lookups">0</div>
+      <div class="stat-label">Nachschläge</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-cards">0</div>
+      <div class="stat-label">Lernkarten gelernt</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-sessions">0</div>
+      <div class="stat-label">Tutor-Fragen</div>
+    </div>
+  </div>
+  <button class="btn btn-danger" onclick="resetProgress()" style="margin-top:1.5rem">
+    🗑️ Fortschritt zurücksetzen
+  </button>
+
+  <div class="card" style="margin-top:1.5rem">
+    <h3>Zuletzt gelernte Themen</h3>
+    <ul id="recent-topics" class="topic-list"></ul>
+  </div>
+</section>
+
+</main>
+
+<!-- Loader Overlay -->
+<div id="loader" class="loader-overlay" style="display:none">
+  <div class="loader-box">
+    <div class="spinner"></div>
+    <p id="loader-text">Wird geladen…</p>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
