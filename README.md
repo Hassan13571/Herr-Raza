@@ -1,56 +1,36 @@
 # 🎓 Herr-Raza Lernapp
 
-KI-gestützte Lernplattform für den Schulunterricht — läuft komplett mit kostenlosen APIs.
+**100% kostenlose Lernplattform — KEIN API-Key, KEINE Registrierung nötig!**
 
-## Features
-
-| Bereich | Beschreibung | API |
-|---------|-------------|-----|
-| **Quiz** | Multiple-Choice-Fragen aus tausenden Kategorien | Open Trivia DB (kostenlos) |
-| **KI-Tutor** | Chat-Tutor für alle Schulfächer | Claude Haiku (optional) |
-| **Nachschlagen** | Begriffe mit Wikipedia-Erklärung + KI-Summary | Wikipedia REST API (kostenlos) |
-| **Lernkarten** | KI-generierte Flashcards zum Üben | Claude Haiku (optional) |
-| **Fortschritt** | Statistiken und gelernte Themen | localStorage (lokal) |
-
-## Verwendete APIs (komplett kostenlos)
-
-- **[Open Trivia Database](https://opentdb.com)** — Kein API-Key, über 4.000 Fragen
-- **[Wikipedia REST API](https://www.mediawiki.org/wiki/API)** — Kein API-Key, Deutsch & Englisch
-- **[Claude Haiku](https://www.anthropic.com)** — Optionaler API-Key, ~$0.001/Anfrage (sehr günstig)
-
-## Installation & Start
+## ▶️ Sofort starten
 
 ```bash
-# 1. Abhängigkeiten installieren
-pip install -r requirements.txt
-
-# 2. (Optional) Claude API Key setzen für KI-Funktionen
-export ANTHROPIC_API_KEY="sk-ant-..."
-
-# 3. App starten
+pip install flask requests
 python app.py
 ```
+→ Browser öffnen: **http://localhost:5000**
 
-Dann im Browser öffnen: **http://localhost:5000**
+## Module
 
-## Ohne API-Key
+| Modul | API | Kosten |
+|-------|-----|--------|
+| 🌤️ **Wetter** | Open-Meteo + Geocoding | 🆓 Komplett kostenlos |
+| 📰 **Nachrichten** | HackerNews + Dev.to | 🆓 Komplett kostenlos |
+| ❓ **Quiz** | Open Trivia DB (4.000+ Fragen) | 🆓 Komplett kostenlos |
+| 📖 **Wikipedia** | Wikipedia REST API | 🆓 Komplett kostenlos |
+| 🌍 **Länder** | RestCountries API | 🆓 Komplett kostenlos |
+| 💱 **Währungen** | Frankfurter API | 🆓 Komplett kostenlos |
+| 😄 **Witze** | JokeAPI | 🆓 Komplett kostenlos |
+| 💬 **Zitate** | Quotable API | 🆓 Komplett kostenlos |
 
-Die App funktioniert **vollständig ohne API-Key** mit:
-- Open Trivia DB Quizze (alle Kategorien, alle Schwierigkeitsgrade)
-- Wikipedia Nachschlagen (Deutsch & Englisch)
-- Fortschrittsverfolgung
+## Verwendete APIs
 
-Mit API-Key kommen zusätzlich KI-Tutor, KI-Quiz und Lernkarten hinzu.
-
-## Struktur
-
-```
-Herr-Raza/
-├── app.py              # Flask Backend (Routen & API-Calls)
-├── requirements.txt
-├── templates/
-│   └── index.html      # Haupt-UI
-└── static/
-    ├── style.css        # Design
-    └── script.js        # Frontend-Logik
-```
+- [Open-Meteo](https://open-meteo.com) — Wetter & Vorhersage
+- [HackerNews API](https://github.com/HackerNews/API) — Tech-Nachrichten
+- [Dev.to API](https://developers.forem.com/api) — Entwickler-Artikel
+- [Open Trivia Database](https://opentdb.com) — Quiz-Fragen
+- [Wikipedia REST API](https://www.mediawiki.org/wiki/API) — Wissensdatenbank
+- [RestCountries](https://restcountries.com) — Länderdaten
+- [Frankfurter API](https://www.frankfurter.app) — Wechselkurse
+- [JokeAPI](https://v2.jokeapi.dev) — Witze
+- [Quotable](https://quotable.io) — Zitate
