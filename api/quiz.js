@@ -234,7 +234,7 @@ function deterministicQuestions(topic,count,difficulty,grounding,exclude){
     const answer=f.text;
     const options=shuffle([answer,...wrong.slice(0,3)]);
     const qBase={
-      easy:'Welche Aussage zu „'+topic+'“ stimmt laut Quelle?',
+      easy:'Welche Aussage zu „'+subjectCue(answer,topic)+'“ stimmt laut Quelle?',
       medium:'Welche Aussage über „'+subjectCue(answer,topic)+'“ wird von der Quelle gestützt?',
       hard:'Welche präzise Aussage zu „'+subjectCue(answer,topic)+'“ ist anhand der Quelle korrekt?',
       expert:'Welche Aussage zu „'+subjectCue(answer,topic)+'“ ist anhand der Quelle fachlich am besten belegt?'
@@ -286,6 +286,7 @@ function makePrompt(topic,count,difficulty,mode,grounding){
 async function createQuiz(topic,count,difficulty,mode){
   const grounding=await buildGrounding(topic,mode);
   let questions=[];
+  let fallbackUsed=false;
   try{
     const raw=await gatewayText(makePrompt(topic,count,difficulty,mode,grounding));
     questions=parseQuizText(raw,count,grounding.sources);
@@ -293,10 +294,11 @@ async function createQuiz(topic,count,difficulty,mode){
   const seen=new Set(questions.map(q=>q.q.toLowerCase()));
   if(questions.length<count&&grounding.items.length){
     const fallback=deterministicQuestions(topic,count-questions.length,difficulty,grounding,seen);
+    if(fallback.length)fallbackUsed=true;
     questions.push(...fallback);
   }
   if(questions.length<Math.min(3,count))throw new Error('Es konnten nicht genug zuverlässige Fragen aus den verfügbaren Quellen erstellt werden.');
-  return {questions:questions.slice(0,count),fallbackUsed:questions.length<count?true:false};
+  return {questions:questions.slice(0,count),fallbackUsed};
 }
 
 module.exports=async function handler(req,res){
