@@ -231,7 +231,7 @@ function numericInfo(sentence){
 }
 function subjectCue(sentence,topic){
   const m=sentence.match(/^(.{3,85}?)\s+(?:ist|sind|war|waren|wurde|wurden|hat|haben|liegt|liegen|entsteht|entstehen|bezeichnet|besteht|führt|führte|umfasst|enthält)\b/i);
-  if(m)return clean(m[1]).slice(0,85);
+  if(m){const cue=clean(m[1]).slice(0,85);if(!/^(sie|er|es|dieser|diese|dieses|dabei|dort|hier)$/i.test(cue))return cue;}
   const first=clean(sentence.split(/[,;:]/)[0]).split(' ').slice(0,7).join(' ');
   return first||topic;
 }
@@ -240,7 +240,7 @@ function definitionPairs(facts){
   for(const f of facts){
     const m=f.text.match(/^(.{3,90}?)\s+(ist|sind|war|waren|wird|werden|bezeichnet|besteht aus|umfasst|enthält)\s+(.{12,190})$/i);
     if(!m)continue;
-    out.push({subject:clean(m[1]),verb:m[2].toLowerCase(),predicate:clean(m[3]),fact:f});
+    const subject=clean(m[1]);if(/^(sie|er|es|dieser|diese|dieses|dabei|dort|hier)$/i.test(subject))continue;out.push({subject,verb:m[2].toLowerCase(),predicate:clean(m[3]),fact:f});
   }
   return out;
 }
