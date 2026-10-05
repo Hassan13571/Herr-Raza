@@ -1,3 +1,4 @@
+function restrictedTopic(t){return /(?:waffe|pistole|gewehr|munition|messer|sprengstoff|bombe|drogen|cannabis|thc|kokain|heroin|meth|vape|zigarette|nikotin|alkohol|porno|pornografie|glücksspiel|casino|wetten|betting)/i.test(t);}
 function clean(s){return String(s||'').replace(/\s+/g,' ').trim();}
 function safeText(s,n=6000){return clean(s).slice(0,n);}
 function shuffle(a){const x=[...a];for(let i=x.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[x[i],x[j]]=[x[j],x[i]];}return x;}
@@ -93,7 +94,7 @@ module.exports=async function handler(req,res){
   const count=Math.min(15,Math.max(3,Number(req.query.count)||10));
   const difficulty=['easy','medium','hard','expert'].includes(req.query.difficulty)?req.query.difficulty:'medium';
   const mode=req.query.mode==='live'?'live':'school';
-  if(!topic)return res.status(400).json({error:'Bitte ein Thema angeben.'});
+  if(!topic)return res.status(400).json({error:'Bitte ein Thema angeben.'});\n  if(restrictedTopic(topic))return res.status(400).json({error:'Dieses Thema ist für die Quiz-Suche nicht verfügbar.'});
   try{
     let questions;
     try{questions=await aiQuiz(topic,count,difficulty,mode);}
