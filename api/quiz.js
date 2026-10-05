@@ -84,15 +84,15 @@ async function buildGrounding(topic,mode){
 
 async function gatewayText(prompt){
   const {generateText}=await import('ai');
-  const models=['inclusionai/ling-3.1-flash-free','inclusionai/ling-3.1-flash'];
+  const models=['stealth/pixel-canary','inclusionai/ling-3.1-flash-free','inclusionai/ling-3.1-flash'];
   let lastError=null;
   for(const model of models){
     try{
       const result=await generateText({
         model,
         prompt,
-        temperature:0.15,
-        maxOutputTokens:2400
+        maxOutputTokens:2400,
+        reasoning:'low'
       });
       const text=clean(result&&result.text);
       if(text)return text;
