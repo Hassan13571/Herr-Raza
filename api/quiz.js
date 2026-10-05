@@ -32,7 +32,7 @@ async function wikiJSON(params){
 async function wikiContext(topic){
   let pages=[];
   try{
-    const direct=await wikiJSON({action:'query',prop:'extracts',explaintext:'1',exintro:'1',redirects:'1',titles:topic,formatversion:'2'});
+    const direct=await wikiJSON({action:'query',prop:'extracts',explaintext:'1',redirects:'1',titles:topic,formatversion:'2'});
     pages=((direct.query&&direct.query.pages)||[]).filter(x=>x.extract&&!x.missing);
   }catch(e){if(e.status===429)throw e;}
   if(!pages.length){
@@ -79,6 +79,38 @@ async function gdeltContext(topic){
   }))};
 }
 
+function decodeXml(s){
+  return String(s||'')
+    .replace(/^<!\[CDATA\[/,'').replace(/\]\]>$/,'')
+    .replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'")
+    .replace(/&lt;/g,'<').replace(/&gt;/g,'>').trim();
+}
+async function googleNewsContext(topic){
+  const url='https://news.google.com/rss/search?'+new URLSearchParams({
+    q:topic,hl:'de',gl:'DE',ceid:'DE:de'
+  }).toString();
+  const r=await fetch(url,{headers:{'User-Agent':'Herr-Raza-Quiz/5.1 educational quiz','Accept':'application/rss+xml, application/xml, text/xml'}});
+  if(!r.ok)throw new Error('News-RSS HTTP '+r.status);
+  const xml=await r.text();
+  const blocks=[...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].slice(0,8);
+  const items=[];
+  for(const m of blocks){
+    const b=m[1];
+    const pick=re=>{const x=b.match(re);return x?decodeXml(x[1]):'';};
+    const title=pick(/<title>([\s\S]*?)<\/title>/i);
+    const link=pick(/<link>([\s\S]*?)<\/link>/i);
+    const date=pick(/<pubDate>([\s\S]*?)<\/pubDate>/i);
+    const source=pick(/<source[^>]*>([\s\S]*?)<\/source>/i);
+    if(!title||!/^https?:\/\//.test(link))continue;
+    items.push({
+      source:{title:'News: '+(source||'Google News'),url:link},
+      text:safeText(title,300)+(date?' | Datum: '+safeText(date,60):''),
+      kind:'live'
+    });
+  }
+  return {items};
+}
+
 function normalizeGrounding(items){
   const list=(items||[]).filter(x=>x&&x.source&&x.text).slice(0,10);
   const sources=list.map(x=>x.source);
@@ -96,6 +128,7 @@ async function buildGrounding(topic,mode){
   if(mode!=='live')return normalizeGrounding(background.items);
   let live={items:[]};
   try{live=await gdeltContext(topic);}catch(e){console.warn('gdelt',e.message);}
+  if(!live.items.length){try{live=await googleNewsContext(topic);}catch(e){console.warn('news-rss',e.message);}}
   return normalizeGrounding([...background.items.slice(0,3),...live.items.slice(0,7)]);
 }
 
@@ -105,7 +138,7 @@ async function gatewayText(prompt){
   let lastError=null;
   for(const model of models){
     try{
-      const result=await generateText({model,prompt,maxOutputTokens:2400,reasoning:'low'});
+      const result=await generateText(model==='stealth/pixel-canary'?{model,prompt,maxOutputTokens:3200,reasoning:'none'}:{model,prompt,maxOutputTokens:2400});
       const text=String(result&&result.text||'').trim();
       if(text)return text;
       lastError=new Error('Leere KI-Antwort von '+model);
