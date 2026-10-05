@@ -1,0 +1,9 @@
+{
+  "name": "herr-raza-quiz",
+  "private": true,
+  "version": "1.0.0",
+  "engines": { "node": "24.x" },
+  "dependencies": {
+    "ai": "latest"
+  }
+}
