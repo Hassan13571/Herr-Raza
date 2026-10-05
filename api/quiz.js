@@ -41,7 +41,7 @@ async function wikiContext(topic){
   }
   const items=pages.slice(0,3).map(x=>({
     source:{title:'Wikipedia: '+x.title,url:'https://de.wikipedia.org/wiki/'+encodeURIComponent(x.title.replace(/ /g,'_'))},
-    text:safeText(x.extract,2200),
+    text:safeText(x.extract,6000),
     kind:'background'
   }));
   return {items};
@@ -134,19 +134,16 @@ async function buildGrounding(topic,mode){
 
 async function gatewayText(prompt){
   const {generateText}=await import('ai');
-  const models=['stealth/pixel-canary','inclusionai/ling-3.1-flash-free','inclusionai/ling-3.1-flash'];
-  let lastError=null;
-  for(const model of models){
-    try{
-      const result=await generateText(model==='stealth/pixel-canary'?{model,prompt,maxOutputTokens:3200,reasoning:'none'}:{model,prompt,maxOutputTokens:2400});
-      const text=String(result&&result.text||'').trim();
-      if(text)return text;
-      lastError=new Error('Leere KI-Antwort von '+model);
-    }catch(e){lastError=e;}
-  }
-  throw lastError||new Error('Vercel AI hat keine Antwort geliefert.');
+  const result=await generateText({
+    model:'stealth/pixel-canary',
+    prompt,
+    maxOutputTokens:3200,
+    reasoning:'none'
+  });
+  const text=String(result&&result.text||'').trim();
+  if(!text)throw new Error('Kostenlose KI hat gerade keine Textantwort geliefert.');
+  return text;
 }
-
 function parseQuizText(raw,count,sources){
   const lines=String(raw||'').replace(/\r/g,'').replace(/\x60\x60\x60(?:text)?/gi,'').split('\n');
   const blocks=[];let cur={};
@@ -192,101 +189,136 @@ function sourceFacts(grounding){
       if(t.length>=25)facts.push({text:t,sourceIndex:item.sourceIndex,kind:'live'});
       continue;
     }
-    const sentences=String(item.text||'').split(/(?<=[.!?])\s+(?=[A-ZÄÖÜ0-9])/u);
+    const prepared=String(item.text||'').replace(/={2,}[^=]+={2,}/g,'. ');
+    const sentences=prepared.split(/(?<=[.!?])\s+(?=[A-ZÄÖÜ0-9])/u);
     for(const s of sentences){
       const t=clean(s);
-      if(t.length>=45&&t.length<=260)facts.push({text:t,sourceIndex:item.sourceIndex,kind:'background'});
+      if(t.length>=35&&t.length<=280)facts.push({text:t,sourceIndex:item.sourceIndex,kind:'background'});
     }
   }
   return facts;
 }
-
-function termPool(facts){
-  const stop=new Set(['Diese','Dieser','Dieses','Dabei','Daher','Damit','Durch','Eine','Einer','Eines','Einen','Heute','Jedoch','Neben','Nach','Unter','Viele','Während','Weiter','Welche','Das','Der','Die','Den','Dem','Ein','Im','Am','Auf','Aus','Bei','Bis','Für','Mit','Ohne','Seit','Von','Vor','Zum','Zur','Als','Auch']);
-  const terms=[];
-  for(const f of facts){
-    const ms=f.text.match(/\b[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]{3,}\b/g)||[];
-    for(const m of ms)if(!stop.has(m)&&!terms.includes(m))terms.push(m);
-  }
-  return terms;
+function addQuestion(out,seen,q,options,correctAnswer,explanation,src,count){
+  if(out.length>=count)return;
+  const opts=[...new Set(options.map(clean).filter(Boolean))];
+  if(opts.length!==4)return;
+  const shuffled=shuffle(opts);
+  const correct=shuffled.indexOf(clean(correctAnswer));
+  if(correct<0)return;
+  const key=clean(q).toLowerCase();
+  if(seen.has(key))return;
+  seen.add(key);
+  out.push({
+    q:clean(q),options:shuffled,correct,
+    explanation:clean(explanation),
+    source:src?src.title:'Quellenmaterial',
+    sourceUrl:src?src.url:''
+  });
 }
-
-function mutations(sentence,pool){
-  const out=new Set();
-  const number=sentence.match(/\b(?:1\d{3}|20\d{2}|\d{1,3}(?:[.,]\d+)?)\b/);
-  if(number){
-    const raw=number[0],n=Number(raw.replace(',','.'));
-    if(Number.isFinite(n)){
-      const vals=n>=1000&&n<=2100?[n-1,n+1,n+10]:[Math.max(0,n-1),n+1,n===0?2:n*2];
-      for(const v of vals){
-        const rep=Number.isInteger(v)?String(v):String(Math.round(v*10)/10).replace('.',',');
-        if(rep!==raw)out.add(sentence.replace(raw,rep));
-      }
-    }
-  }
-  const own=(sentence.match(/\b[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]{3,}\b/g)||[]).filter(x=>pool.includes(x));
-  const target=own.sort((a,b)=>b.length-a.length)[0];
-  if(target){
-    for(const repl of shuffle(pool.filter(x=>x!==target&&!sentence.includes(x))).slice(0,6)){
-      out.add(sentence.replace(target,repl));
-      if(out.size>=3)break;
-    }
-  }
-  const swaps=[
-    [/\bsteigt\b/i,'sinkt'],[/\bsinkt\b/i,'steigt'],[/\bmehr\b/i,'weniger'],[/\bweniger\b/i,'mehr'],
-    [/\bhöher\b/i,'niedriger'],[/\bniedriger\b/i,'höher'],[/\bgrößer\b/i,'kleiner'],[/\bkleiner\b/i,'größer'],
-    [/\bvor\b/i,'nach'],[/\bnach\b/i,'vor'],[/\bist\b/i,'ist nicht'],[/\bsind\b/i,'sind nicht'],[/\bwar\b/i,'war nicht']
-  ];
-  for(const [re,to] of swaps)if(re.test(sentence)){out.add(sentence.replace(re,to));if(out.size>=3)break;}
-  return [...out].filter(x=>x!==sentence).slice(0,3);
+function numericInfo(sentence){
+  const m=sentence.match(/\b(\d{1,4}(?:[.,]\d+)?)(\s*(?:%|°C|km|m|Mio\.?|Millionen?|Milliarden?))?\b/);
+  if(!m)return null;
+  const n=Number(m[1].replace(',','.')); if(!Number.isFinite(n))return null;
+  const suffix=m[2]||'';
+  const format=v=>(Number.isInteger(v)?String(v):String(Math.round(v*100)/100).replace('.',','))+suffix;
+  let vals;
+  if(n>=1000&&n<=2100)vals=[n-10,n-1,n+1,n+10];
+  else if(n===0)vals=[1,2,5,10];
+  else vals=[Math.max(0,n-1),n+1,Math.max(0,Math.round(n*0.5*100)/100),Math.round(n*2*100)/100];
+  const wrong=[...new Set(vals.map(format).filter(x=>x!==m[0]))].slice(0,3);
+  if(wrong.length<3)return null;
+  return {answer:m[0],wrong};
 }
-
 function subjectCue(sentence,topic){
-  const m=sentence.match(/^(.{3,70}?)\s+(?:ist|sind|war|waren|wurde|wurden|hat|haben|liegt|liegen|entsteht|entstehen|bezeichnet|besteht|führt|führte)\b/i);
-  if(m)return clean(m[1]).slice(0,70);
-  return clean(sentence.split(/[,;:]/)[0]).split(' ').slice(0,6).join(' ')||topic;
+  const m=sentence.match(/^(.{3,85}?)\s+(?:ist|sind|war|waren|wurde|wurden|hat|haben|liegt|liegen|entsteht|entstehen|bezeichnet|besteht|führt|führte|umfasst|enthält)\b/i);
+  if(m)return clean(m[1]).slice(0,85);
+  const first=clean(sentence.split(/[,;:]/)[0]).split(' ').slice(0,7).join(' ');
+  return first||topic;
 }
-
-function deterministicQuestions(topic,count,difficulty,grounding,exclude){
-  let facts=sourceFacts(grounding);
-  const pool=termPool(facts);
-  const score=f=>{
-    let s=0;
-    if(/\b\d/.test(f.text))s+=difficulty==='hard'||difficulty==='expert'?5:2;
-    if(/\b(?:weil|dadurch|deshalb|während|führt|Folge|Ursache|durch)\b/i.test(f.text))s+=difficulty==='hard'||difficulty==='expert'?5:1;
-    if(f.text.length<150)s+=difficulty==='easy'?4:1;
-    if(f.kind==='live')s+=2;
-    return s;
-  };
-  facts=facts.sort((a,b)=>score(b)-score(a));
-  const out=[],seen=new Set(exclude||[]);
+function definitionPairs(facts){
+  const out=[];
   for(const f of facts){
-    if(out.length>=count)break;
-    const wrong=mutations(f.text,pool);
-    if(wrong.length<3)continue;
-    const answer=f.text;
-    const options=shuffle([answer,...wrong.slice(0,3)]);
-    const qBase={
-      easy:'Welche Aussage zu „'+subjectCue(answer,topic)+'“ stimmt laut Quelle?',
-      medium:'Welche Aussage über „'+subjectCue(answer,topic)+'“ wird von der Quelle gestützt?',
-      hard:'Welche präzise Aussage zu „'+subjectCue(answer,topic)+'“ ist anhand der Quelle korrekt?',
-      expert:'Welche Aussage zu „'+subjectCue(answer,topic)+'“ ist anhand der Quelle fachlich am besten belegt?'
-    }[difficulty]||'Welche Aussage ist laut Quelle korrekt?';
-    if(seen.has(qBase.toLowerCase()))continue;
-    seen.add(qBase.toLowerCase());
-    const src=grounding.sources[f.sourceIndex]||null;
-    out.push({
-      q:qBase,
-      options,
-      correct:options.indexOf(answer),
-      explanation:'Die Quelle nennt: '+answer,
-      source:src?src.title:'Quellenmaterial',
-      sourceUrl:src?src.url:''
-    });
+    const m=f.text.match(/^(.{3,90}?)\s+(ist|sind|war|waren|wird|werden|bezeichnet|besteht aus|umfasst|enthält)\s+(.{12,190})$/i);
+    if(!m)continue;
+    out.push({subject:clean(m[1]),verb:m[2].toLowerCase(),predicate:clean(m[3]),fact:f});
   }
   return out;
 }
+function liveQuestions(topic,count,grounding,out,seen){
+  const live=(grounding.items||[]).filter(x=>x.kind==='live');
+  const bySource=new Map();
+  for(const x of live){
+    const name=grounding.sources[x.sourceIndex]?.title||'';
+    if(!name)continue;
+    bySource.set(name,(bySource.get(name)||0)+1);
+  }
+  for(const item of live){
+    if(out.length>=count)break;
+    const src=grounding.sources[item.sourceIndex]; if(!src||bySource.get(src.title)!==1)continue;
+    const answer=clean(item.text.replace(/\s*\|\s*Datum:.*$/,''));
+    const alternatives=shuffle(live.filter(x=>x.sourceIndex!==item.sourceIndex).map(x=>clean(x.text.replace(/\s*\|\s*Datum:.*$/,''))).filter(Boolean));
+    const wrong=[...new Set(alternatives.filter(x=>x!==answer))].slice(0,3);
+    if(wrong.length<3)continue;
+    addQuestion(out,seen,'Welche aktuelle Meldung stammt aus der Quelle „'+src.title+'“?',[answer,...wrong],answer,'Diese Meldung wurde im aktuellen Nachrichtenfeed dieser Quelle gefunden.',src,count);
+  }
+}
+function deterministicQuestions(topic,count,difficulty,grounding,exclude){
+  const facts=sourceFacts(grounding);
+  const out=[],seen=new Set(exclude||[]);
+  if((grounding.items||[]).some(x=>x.kind==='live'))liveQuestions(topic,count,grounding,out,seen);
 
+  const background=facts.filter(x=>x.kind!=='live');
+  const ordered=[...background].sort((a,b)=>{
+    const score=x=>{
+      let s=0;
+      if(/\b\d/.test(x.text))s+=difficulty==='hard'||difficulty==='expert'?6:3;
+      if(/\b(?:weil|dadurch|deshalb|während|führt|Folge|Ursache|durch|aufgrund)\b/i.test(x.text))s+=difficulty==='hard'||difficulty==='expert'?5:1;
+      if(x.text.length>=70&&x.text.length<=190)s+=3;
+      return s;
+    };
+    return score(b)-score(a);
+  });
+
+  for(const f of ordered){
+    if(out.length>=count)break;
+    const ni=numericInfo(f.text); if(!ni)continue;
+    const cue=subjectCue(f.text,topic);
+    const src=grounding.sources[f.sourceIndex]||null;
+    addQuestion(out,seen,'Welche Zahlenangabe nennt die Quelle im Zusammenhang mit „'+cue+'“?',[ni.answer,...ni.wrong],ni.answer,'Die Quelle nennt die Angabe '+ni.answer+'.',src,count);
+  }
+
+  const defs=definitionPairs(background);
+  const predicates=[...new Set(defs.map(x=>x.predicate))];
+  for(const d of defs){
+    if(out.length>=count)break;
+    const wrong=shuffle(predicates.filter(x=>x!==d.predicate&&x.length<210)).slice(0,3);
+    if(wrong.length<3)continue;
+    const src=grounding.sources[d.fact.sourceIndex]||null;
+    const verb=d.verb;
+    let q;
+    if(verb==='ist'||verb==='war'||verb==='wird')q='Welche Beschreibung trifft laut Quelle auf „'+d.subject+'“ zu?';
+    else q='Welche Aussage über „'+d.subject+'“ entspricht der Quelle?';
+    addQuestion(out,seen,q,[d.predicate,...wrong],d.predicate,'Die Quelle beschreibt „'+d.subject+'“ so: '+d.predicate,src,count);
+  }
+
+  // Last-resort statement questions, but only when we can create clean numerical/antonym variants.
+  const swaps=[
+    [/\bsteigt\b/i,'sinkt'],[/\bsinkt\b/i,'steigt'],[/\bmehr\b/i,'weniger'],[/\bweniger\b/i,'mehr'],
+    [/\bhöher\b/i,'niedriger'],[/\bniedriger\b/i,'höher'],[/\bgrößer\b/i,'kleiner'],[/\bkleiner\b/i,'größer']
+  ];
+  for(const f of ordered){
+    if(out.length>=count)break;
+    const variants=[];
+    const ni=numericInfo(f.text);
+    if(ni)for(const x of ni.wrong)variants.push(f.text.replace(ni.answer,x));
+    for(const [re,to] of swaps)if(re.test(f.text))variants.push(f.text.replace(re,to));
+    const wrong=[...new Set(variants.filter(x=>x!==f.text))].slice(0,3);
+    if(wrong.length<3)continue;
+    const src=grounding.sources[f.sourceIndex]||null;
+    addQuestion(out,seen,'Welche präzise Aussage zu „'+subjectCue(f.text,topic)+'“ ist laut Quelle korrekt?',[f.text,...wrong],f.text,'Die Quelle nennt: '+f.text,src,count);
+  }
+  return out;
+}
 function makePrompt(topic,count,difficulty,mode,grounding){
   const hasSources=grounding.sources.length>0&&grounding.context;
   const sourceList=grounding.sources.map((s,i)=>i+': '+s.title).join('\n');
