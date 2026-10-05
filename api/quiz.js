@@ -94,7 +94,8 @@ module.exports=async function handler(req,res){
   const count=Math.min(15,Math.max(3,Number(req.query.count)||10));
   const difficulty=['easy','medium','hard','expert'].includes(req.query.difficulty)?req.query.difficulty:'medium';
   const mode=req.query.mode==='live'?'live':'school';
-  if(!topic)return res.status(400).json({error:'Bitte ein Thema angeben.'});\n  if(restrictedTopic(topic))return res.status(400).json({error:'Dieses Thema ist für die Quiz-Suche nicht verfügbar.'});
+  if(!topic)return res.status(400).json({error:'Bitte ein Thema angeben.'});
+  if(restrictedTopic(topic))return res.status(400).json({error:'Dieses Thema ist für die Quiz-Suche nicht verfügbar.'});
   try{
     let questions;
     try{questions=await aiQuiz(topic,count,difficulty,mode);}
