@@ -84,43 +84,50 @@ async function buildGrounding(topic,mode){
 
 async function gatewayText(prompt){
   const {generateText}=await import('ai');
-  const result=await generateText({
-    model:'inclusionai/ling-3.1-flash-free',
-    prompt,
-    temperature:0.2,
-    maxOutputTokens:2800
-  });
-  if(!result||!result.text)throw new Error('Vercel AI hat keine Antwort geliefert.');
-  return result.text;
+  const models=['inclusionai/ling-3.1-flash-free','inclusionai/ling-3.1-flash'];
+  let lastError=null;
+  for(const model of models){
+    try{
+      const result=await generateText({
+        model,
+        prompt,
+        temperature:0.15,
+        maxOutputTokens:2400
+      });
+      const text=clean(result&&result.text);
+      if(text)return text;
+      lastError=new Error('Leere KI-Antwort von '+model);
+    }catch(e){lastError=e;}
+  }
+  throw lastError||new Error('Vercel AI hat keine Antwort geliefert.');
 }
-
-function parseJSON(raw){
-  const s=String(raw||'').replace(/\uFEFF/g,'').trim().replace(/^\x60\x60\x60(?:json)?\s*/i,'').replace(/\s*\x60\x60\x60$/,'');
-  try{return JSON.parse(s);}catch{}
-  const a=s.indexOf('{'),b=s.lastIndexOf('}');
-  if(a>=0&&b>a)return JSON.parse(s.slice(a,b+1));
-  throw new Error('KI-Antwort war nicht gültiges JSON.');
-}
-
-function validateQuestions(data,count,sources){
-  const arr=Array.isArray(data)?data:Array.isArray(data&&data.questions)?data.questions:[];
-  const seen=new Set(),out=[];
-  for(const x of arr){
-    if(!x||!x.q||!Array.isArray(x.options)||x.options.length!==4)continue;
-    const options=x.options.map(v=>clean(v));
-    if(options.some(v=>!v)||new Set(options.map(v=>v.toLowerCase())).size!==4)continue;
-    const correct=Number(x.correct);
-    if(!Number.isInteger(correct)||correct<0||correct>3)continue;
-    const q=clean(x.q);
-    if(q.length<8||seen.has(q.toLowerCase()))continue;
+function parseQuizText(raw,count,sources){
+  const text=String(raw||'').replace(/\r/g,'').trim();
+  const blocks=text.split(/\n\s*END\s*(?:\n|$)/i);
+  const out=[],seen=new Set();
+  for(const block of blocks){
+    const lines=block.split('\n').map(x=>x.trim()).filter(Boolean);
+    const get=(key)=>{
+      const line=lines.find(x=>x.toUpperCase().startsWith(key+'|'));
+      return line?line.slice(line.indexOf('|')+1).trim():'';
+    };
+    const q=get('QUESTION'),a=get('A'),b=get('B'),cc=get('C'),d=get('D');
+    const corr=get('CORRECT').toUpperCase().replace(/[^ABCD]/g,'').slice(0,1);
+    const explanation=get('WHY');
+    const sourceRaw=get('SOURCE');
+    const options=[a,b,cc,d];
+    const correct='ABCD'.indexOf(corr);
+    if(!q||options.some(x=>!x)||correct<0)continue;
+    if(new Set(options.map(x=>x.toLowerCase())).size!==4)continue;
+    if(seen.has(q.toLowerCase()))continue;
     seen.add(q.toLowerCase());
-    const idx=Number(x.sourceIndex);
+    const idx=Number(sourceRaw);
     const src=Number.isInteger(idx)&&idx>=0&&idx<sources.length?sources[idx]:null;
     out.push({
-      q,
-      options,
+      q:clean(q),
+      options:options.map(clean),
       correct,
-      explanation:clean(x.explanation||('Richtig ist: '+options[correct])),
+      explanation:clean(explanation||('Richtig ist: '+options[correct])),
       source:src?src.title:'KI-Wissensmodell',
       sourceUrl:src?src.url:''
     });
@@ -128,7 +135,6 @@ function validateQuestions(data,count,sources){
   }
   return out;
 }
-
 function makePrompt(topic,count,difficulty,mode,grounding){
   const hasSources=grounding.sources.length>0&&grounding.context;
   const sourceList=grounding.sources.map((s,i)=>i+': '+s.title).join('\n');
@@ -151,8 +157,18 @@ function makePrompt(topic,count,difficulty,mode,grounding){
     '',
     hasSources?'QUELLEN:\n'+sourceList+'\n\nKONTEXT:\n'+grounding.context:'',
     '',
-    'Antworte NUR als gültiges JSON in diesem Format:',
-    '{"questions":[{"q":"Frage","options":["A","B","C","D"],"correct":0,"explanation":"kurze Begründung","sourceIndex":0}]}',
+    'Antworte NUR im folgenden Zeilenformat, ohne Markdown und ohne zusätzlichen Text:',
+    'QUESTION|Fragetext',
+    'A|Antwort A',
+    'B|Antwort B',
+    'C|Antwort C',
+    'D|Antwort D',
+    'CORRECT|A',
+    'WHY|kurze Begründung',
+    'SOURCE|0',
+    'END',
+    'Danach direkt die nächste Frage im selben Format.',
+    'SOURCE ist die Quellen-Nummer oder -1, falls keine externe Quelle verwendet wurde.',
     'Erzeuge genau '+count+' unterschiedliche Fragen.'
   ].filter(Boolean).join('\n');
 }
@@ -160,8 +176,7 @@ function makePrompt(topic,count,difficulty,mode,grounding){
 async function aiQuiz(topic,count,difficulty,mode){
   const grounding=await buildGrounding(topic,mode);
   const raw=await gatewayText(makePrompt(topic,count,difficulty,mode,grounding));
-  const parsed=parseJSON(raw);
-  const qs=validateQuestions(parsed,count,grounding.sources);
+  const qs=parseQuizText(raw,count,grounding.sources);
   if(qs.length<Math.min(3,count))throw new Error('KI konnte nicht genug gültige Fragen erzeugen.');
   return qs;
 }
