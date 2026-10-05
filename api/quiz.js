@@ -42,7 +42,7 @@ async function wikiContext(topic){
   }
   if(!pages.length)return {context:'',sources:[]};
   return {
-    context:pages.map((x,i)=>'['+i+'] '+x.title+': '+safeText(x.extract,2500)).join('\n\n').slice(0,9000),
+    context:pages.map((x,i)=>'['+i+'] '+x.title+': '+safeText(x.extract,1800)).join('\n\n').slice(0,6500),
     sources:pages.map(x=>({title:'Wikipedia: '+x.title,url:'https://de.wikipedia.org/wiki/'+encodeURIComponent(x.title.replace(/ /g,'_'))}))
   };
 }
@@ -79,7 +79,7 @@ async function buildGrounding(topic,mode){
     const shifted=live.context.replace(/^\[(\d+)\]/gm,(_,n)=>'['+(Number(n)+offset)+']');
     chunks.push('AKTUELLE WEB-MELDUNGEN:\n'+shifted);
   }
-  return {context:chunks.join('\n\n').slice(0,11000),sources};
+  return {context:chunks.join('\n\n').slice(0,8000),sources};
 }
 
 async function gatewayText(prompt){
@@ -88,7 +88,7 @@ async function gatewayText(prompt){
     model:'inclusionai/ling-3.1-flash-free',
     prompt,
     temperature:0.2,
-    maxOutputTokens:4200
+    maxOutputTokens:2800
   });
   if(!result||!result.text)throw new Error('Vercel AI hat keine Antwort geliefert.');
   return result.text;
