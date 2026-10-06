@@ -60,6 +60,17 @@ test('quota and authentication failures stop instead of rotating models', async 
   }
 });
 
+test('invalid answer format tries another free model before reporting success', async () => {
+  const calls=[];
+  const client=ai.createFreeAI({fetcher:catalog([freeModel,{...freeModel,id:'poolside/laguna-s-2.1-free'}]),generate:async options=>{
+    calls.push(options.model);
+    return {text:calls.length===1?'Wrong format':'Valid quiz'};
+  }});
+  const result=await client.generateFreeText('Test',{validateText:text=>text==='Valid quiz'});
+  assert.equal(result.model,'poolside/laguna-s-2.1-free');
+  assert.equal(calls.length,2);
+});
+
 test('deadline cancels the underlying generation request', async () => {
   const client = ai.createFreeAI({ fetcher: catalog([freeModel]), generate: options => new Promise((resolve, reject) => {
     options.abortSignal.addEventListener('abort', () => reject(options.abortSignal.reason), { once: true });
@@ -110,6 +121,17 @@ test('API distinguishes KI, mixed quizzes and source fallback; health never uses
       assert.equal(res.body.aiQuestionCount, 1);
       assert.equal(res.body.questions.length, 3);
       assert.equal(res.body.fallbackUsed, true);
+    });
+    await t.test('JSON quiz response accepts valid questions and rejects invalid answers', async () => {
+      const questions=Array.from({length:3},(_,i)=>({q:'JSON-Frage '+i,options:['A','B','C','D'],correct:i,explanation:'Begründung',sourceIndex:-1}));
+      questions.push({q:'Ungültige Frage',options:['A','A','C','D'],correct:8});
+      generate=async()=>({text:'```json\n'+JSON.stringify({questions})+'\n```',model:freeModel.id,modelName:freeModel.name});
+      const res=response();
+      await quizHandler(request,res);
+      assert.equal(res.statusCode,200);
+      assert.equal(res.body.aiQuestionCount,3);
+      assert.equal(res.body.engine,'free-ai');
+      assert.equal(res.body.questions[1].correct,1);
     });
     await t.test('provider outage yields clearly labelled source quiz', async () => {
       generate = async () => { throw new ai.FreeAIError('quota', 'Kostenloses Limit erreicht.'); };

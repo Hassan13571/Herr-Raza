@@ -135,6 +135,34 @@ async function buildGrounding(topic,mode){
 }
 
 function parseQuizText(raw,count,sources){
+  const jsonText=String(raw||'').replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/^\s*```(?:json)?\s*/i,'').replace(/\s*```\s*$/,'').trim();
+  const candidates=[jsonText];
+  for(const [open,close] of [['{','}'],['[',']']]){
+    const start=jsonText.indexOf(open),end=jsonText.lastIndexOf(close);
+    if(start>=0&&end>start)candidates.push(jsonText.slice(start,end+1));
+  }
+  for(const candidate of candidates){
+    try{
+      const data=JSON.parse(candidate),list=Array.isArray(data)?data:data.questions;
+      if(!Array.isArray(list))continue;
+      const out=[],seen=new Set();
+      for(const item of list){
+        if(!item||typeof item!=='object')continue;
+        const q=clean(item.q||item.question),opts=item.options;
+        if(!q||!Array.isArray(opts)||opts.length!==4||opts.some(x=>typeof x!=='string'||!clean(x)))continue;
+        const options=opts.map(clean);
+        if(new Set(options.map(x=>x.toLowerCase())).size!==4||seen.has(q.toLowerCase()))continue;
+        const supplied=item.correct;
+        const correct=typeof supplied==='string'&&/^[ABCD]$/i.test(supplied)?'ABCD'.indexOf(supplied.toUpperCase()):supplied;
+        if(!Number.isInteger(correct)||correct<0||correct>3)continue;
+        const idx=item.sourceIndex,src=Number.isInteger(idx)&&idx>=0&&idx<sources.length?sources[idx]:null;
+        out.push({q,options,correct,explanation:clean(item.explanation||('Richtig ist: '+options[correct])),source:src?src.title:'KI-Wissensmodell',sourceUrl:src?src.url:''});
+        seen.add(q.toLowerCase());
+        if(out.length>=count)break;
+      }
+      if(out.length)return out;
+    }catch{}
+  }
   const lines=String(raw||'').replace(/\r/g,'').replace(/\x60\x60\x60(?:text)?/gi,'').split('\n');
   const blocks=[];let cur={};
   const push=()=>{if(Object.keys(cur).length){blocks.push(cur);cur={};}};
@@ -326,14 +354,15 @@ function makePrompt(topic,count,difficulty,mode,grounding){
     '- Falsche Antworten sollen plausibel, aber klar falsch sein.',
     '- Keine Trickfragen, keine doppelten Fragen, kein "Alle Antworten".',
     '- Bei gefährlichen oder altersbeschränkten Themen niemals praktische Anleitungen, Beschaffung, Dosierungen oder Umgehung von Regeln.',
-    hasSources?'- Nutze für überprüfbare Fakten bevorzugt den Quellenkontext. SOURCE muss auf eine passende Quellen-Nummer zeigen.':'- Nutze nur stabiles, allgemein anerkanntes Wissen und setze SOURCE auf -1.',
+    hasSources?'- Nutze für überprüfbare Fakten bevorzugt den Quellenkontext. sourceIndex muss auf eine passende Quellen-Nummer zeigen.':'- Nutze nur stabiles, allgemein anerkanntes Wissen und setze sourceIndex auf -1.',
     mode==='live'?'- Frage aktuelle Fakten NUR ab, wenn sie ausdrücklich in den aktuellen Web-Meldungen stehen.':'',
     '',
     hasSources?'QUELLEN:\n'+sourceList+'\n\nKONTEXT:\n'+grounding.context:'',
     '',
-    'Antworte NUR im folgenden Zeilenformat, ohne Markdown:',
-    'QUESTION|Fragetext','A|Antwort A','B|Antwort B','C|Antwort C','D|Antwort D',
-    'CORRECT|A','WHY|kurze Begründung','SOURCE|0','END',
+    'Antworte NUR mit einem gültigen JSON-Objekt, ohne Markdown und ohne zusätzlichen Text.',
+    'Format: {"questions":[{"q":"Fragetext","options":["Antwort A","Antwort B","Antwort C","Antwort D"],"correct":0,"explanation":"Kurze Begründung","sourceIndex":-1}]}',
+    'correct ist der Index der richtigen Antwort: 0=A, 1=B, 2=C, 3=D.',
+    'sourceIndex ist die Nummer der verwendeten Quelle oder -1, wenn keine Quelle passt.',
     'Erzeuge genau '+count+' unterschiedliche Fragen.'
   ].filter(Boolean).join('\n');
 }
@@ -343,7 +372,7 @@ async function createQuiz(topic,count,difficulty,mode){
   let questions=[];
   let fallbackUsed=false,ai=null,aiError=null;
   try{
-    ai=await generateFreeText(makePrompt(topic,count,difficulty,mode,grounding),{maxOutputTokens:Math.max(1600,count*320)});
+    ai=await generateFreeText(makePrompt(topic,count,difficulty,mode,grounding),{maxOutputTokens:Math.max(1800,count*350),validateText:text=>parseQuizText(text,count,grounding.sources).length>=Math.min(3,count)});
     questions=parseQuizText(ai.text,count,grounding.sources);
     if(!questions.length)throw new FreeAIError('invalid_response','Die KI-Antwort enthält keine gültigen Quizfragen.');
   }catch(e){aiError=publicAIError(e);console.warn('ai-primary',JSON.stringify({code:aiError.code}));}
