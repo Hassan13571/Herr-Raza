@@ -12,7 +12,7 @@ function fixture({ quiz, url = 'https://quiz.test/', Peer } = {}) {
       classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c), toggle(c, force) { const add = force === undefined ? !classes.has(c) : force; if (add) classes.add(c); else classes.delete(c); } },
       addEventListener() {}, focus() {}, scrollIntoView() {}, replaceChildren(...children) { this.children = children; }, appendChild(child) { this.children.push(child); },
       remove() {}, click() { if (this.href) downloads.push({ href: this.href, name: this.download }); return this.onclick?.(); },
-      querySelectorAll() { return [...elements.values()].filter(e => ['topic', 'count', 'difficulty', 'mode', 'timeLimit', 'shuffle'].includes(e.id)); } };
+      querySelectorAll() { return [...elements.values()].filter(e => ['topic', 'sourceText', 'count', 'difficulty', 'mode', 'timeLimit', 'shuffle'].includes(e.id)); } };
     Object.defineProperty(result, 'innerHTML', { get() { return this._html || ''; }, set(html) { this._html = html;
       if (id === 'answers') this.children = [...html.matchAll(/data-original="(\d+)">([\s\S]*?)<\/button>/g)].map(match => { const button = node(); button.dataset.original = match[1]; button.textContent = match[2]; return button; });
     } });
