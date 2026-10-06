@@ -372,7 +372,7 @@ async function createQuiz(topic,count,difficulty,mode){
   let questions=[];
   let fallbackUsed=false,ai=null,aiError=null;
   try{
-    ai=await generateFreeText(makePrompt(topic,count,difficulty,mode,grounding),{maxOutputTokens:Math.max(1800,count*350),validateText:text=>parseQuizText(text,count,grounding.sources).length>=Math.min(3,count)});
+    ai=await generateFreeText(makePrompt(topic,count,difficulty,mode,grounding),{maxOutputTokens:Math.max(1800,count*350),validateText:text=>parseQuizText(text,count,grounding.sources).length>=Math.min(3,count),onAttempt:process.env.VERCEL_ENV==='preview'&&topic==='Photosynthese'?details=>console.info('quiz-diagnostic',JSON.stringify(details)):undefined});
     questions=parseQuizText(ai.text,count,grounding.sources);
     if(!questions.length)throw new FreeAIError('invalid_response','Die KI-Antwort enthält keine gültigen Quizfragen.');
   }catch(e){aiError=publicAIError(e);console.warn('ai-primary',JSON.stringify({code:aiError.code}));}
