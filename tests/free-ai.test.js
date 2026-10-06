@@ -71,6 +71,17 @@ test('invalid answer format tries another free model before reporting success', 
   assert.equal(calls.length,2);
 });
 
+test('temporary provider outage gets one bounded retry', async () => {
+  let calls=0;
+  const client=ai.createFreeAI({fetcher:catalog([freeModel]),generate:async()=>{
+    if(++calls===1)throw Object.assign(new Error('Service temporarily unavailable'),{statusCode:503});
+    return {text:'KI_OK'};
+  }});
+  const result=await client.generateFreeText('Test');
+  assert.equal(result.text,'KI_OK');
+  assert.equal(calls,2);
+});
+
 test('deadline cancels the underlying generation request', async () => {
   const client = ai.createFreeAI({ fetcher: catalog([freeModel]), generate: options => new Promise((resolve, reject) => {
     options.abortSignal.addEventListener('abort', () => reject(options.abortSignal.reason), { once: true });
