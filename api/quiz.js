@@ -134,15 +134,20 @@ async function buildGrounding(topic,mode){
 
 async function gatewayText(prompt){
   const {generateText}=await import('ai');
-  const result=await generateText({
-    model:'stealth/pixel-canary',
-    prompt,
-    maxOutputTokens:3200,
-    reasoning:'none'
-  });
-  const text=String(result&&result.text||'').trim();
-  if(!text)throw new Error('Kostenlose KI hat gerade keine Textantwort geliefert.');
-  return text;
+  const models=['stealth/pixel-canary','inclusionai/ling-3.1-flash-free'];
+  let last=null;
+  for(const model of models){
+    try{
+      const result=await Promise.race([
+        generateText({model,prompt,maxOutputTokens:2600,reasoning:'none'}),
+        new Promise((_,reject)=>setTimeout(()=>reject(new Error('KI-Zeitlimit')),18000))
+      ]);
+      const text=String(result&&result.text||'').trim();
+      if(text)return text;
+      last=new Error('Leere KI-Antwort');
+    }catch(e){last=e;}
+  }
+  throw last||new Error('Kostenlose KI ist gerade nicht verfügbar.');
 }
 function parseQuizText(raw,count,sources){
   const lines=String(raw||'').replace(/\r/g,'').replace(/\x60\x60\x60(?:text)?/gi,'').split('\n');
@@ -355,6 +360,12 @@ async function createQuiz(topic,count,difficulty,mode){
   try{
     const raw=await gatewayText(makePrompt(topic,count,difficulty,mode,grounding));
     questions=parseQuizText(raw,count,grounding.sources);
+    if(questions.length<Math.min(3,count)){
+      const retryPrompt=makePrompt(topic,count,difficulty,mode,grounding)+'\\nWICHTIG: Halte das Zeilenformat exakt ein. Jede Frage muss mit END abgeschlossen werden.';
+      const raw2=await gatewayText(retryPrompt);
+      const retry=parseQuizText(raw2,count,grounding.sources);
+      if(retry.length>questions.length)questions=retry;
+    }
   }catch(e){console.warn('ai-primary',e.message);}
   const seen=new Set(questions.map(q=>q.q.toLowerCase()));
   if(questions.length<count&&grounding.items.length){
