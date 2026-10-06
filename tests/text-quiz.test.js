@@ -61,6 +61,16 @@ test('text API preserves the full source, verifies evidence and never fetches we
       await handler({ method: 'POST', body: { sourceText: facts.join(' '), count: 3 } }, res);
       assert.equal(res.statusCode, 502);
       assert.equal(res.body.ai, undefined);
+      assert.match(res.body.details, /KI hat gerade kein ausreichend belegtes Quiz/);
+      assert.doesNotMatch(res.body.details, /mehr Lerntext/);
+    });
+    await t.test('a provider outage does not blame a complete learning text', async () => {
+      generate = async () => { throw new ai.FreeAIError('unavailable', 'Die kostenlose KI ist gerade nicht erreichbar. Bitte später erneut versuchen.'); };
+      const res = response();
+      await handler({ method: 'POST', body: { sourceText: facts.join(' '), count: 3 } }, res);
+      assert.equal(res.statusCode, 502);
+      assert.match(res.body.details, /KI ist gerade nicht erreichbar/);
+      assert.doesNotMatch(res.body.details, /mehr Lerntext/);
     });
     await t.test('oversized, short and malformed text is rejected before calling AI', async () => {
       const before = calls;

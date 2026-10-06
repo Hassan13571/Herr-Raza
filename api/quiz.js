@@ -403,7 +403,10 @@ async function createQuiz(topic,count,difficulty,mode,sourceText=''){
     if(fallback.length)fallbackUsed=true;
     questions.push(...fallback);
   }
-  if(questions.length<Math.min(3,count))throw new Error(sourceText?'Dein Text enthält nicht genügend belegbare Inhalte für ein Quiz. Bitte mehr Lerntext hinzufügen oder später erneut versuchen.':'Es konnten nicht genug zuverlässige Fragen aus den verfügbaren Quellen erstellt werden.');
+  if(questions.length<Math.min(3,count)){
+    if(sourceText&&aiError)throw new FreeAIError(aiError.code,aiError.code==='invalid_response'?'Die kostenlose KI hat gerade kein ausreichend belegtes Quiz geliefert. Bitte erneut versuchen.':aiError.message);
+    throw new Error(sourceText?'Dein Text enthält nicht genügend belegbare Inhalte für ein Quiz. Bitte mehr Lerntext hinzufügen.':'Es konnten nicht genug zuverlässige Fragen aus den verfügbaren Quellen erstellt werden.');
+  }
   return {questions:questions.slice(0,count),fallbackUsed,aiQuestionCount,
     ai:{connected:aiQuestionCount>0,model:aiQuestionCount>0?ai.model:null,modelName:aiQuestionCount>0?ai.modelName:null,pricing:aiQuestionCount>0?'free':null,unlimited:false},
     warning:aiError?aiError.message:null};
