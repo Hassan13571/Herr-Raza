@@ -1,51 +1,87 @@
 'use strict';
-
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const vm = require('node:vm');
+const { fixture } = require('./browser-fixture');
+const { fakePeers } = require('./peer-fixture');
 
-test('downloaded quiz executes without network, scores answers and supports replay', async () => {
-  const elements = new Map();
-  const element = id => {
-    if (!elements.has(id)) elements.set(id, {
-      value: '', children: [], addEventListener() {},
-      replaceChildren() { this.children = []; }, appendChild(child) { this.children.push(child); },
-      classList: { add() {}, remove() {}, toggle() {} }
-    });
-    return elements.get(id);
-  };
-  let downloaded;
-  const document = {
-    getElementById: element,
-    createElement: () => ({ classList: { add() {}, remove() {} }, click() {}, remove() {} }),
-    body: { appendChild() {} }
-  };
-  const context = {
-    document, URL: { createObjectURL(blob) { downloaded = blob; return 'blob:test'; }, revokeObjectURL() {} },
-    URLSearchParams, location: { search: '' }, Blob, setTimeout: () => 0, clearInterval() {}, window: {}
-  };
-  vm.createContext(context);
-  const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
-  const appScript = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
-    .map(match => match[1]).find(script => script.includes('function downloadCurrentQuiz'));
-  vm.runInContext(appScript, context);
+test('start-screen download creates a complete offline quiz with replay', async () => {
   const question = { q: 'Frage mit "Anführungszeichen" und </script>', options: ['A', 'B', 'C', 'D'], correct: 0, explanation: 'Erklärung' };
-  vm.runInContext('questions=' + JSON.stringify([question]) + ';currentTopic="Test";downloadCurrentQuiz();', context);
-  const output = await downloaded.text();
+  const app = fixture({ quiz: { topic: 'Test', questions: [question] } });
+  await app.element('downloadSetup').onclick();
+  assert.equal(app.downloads.length, 1);
+  const { href, name } = app.downloads[0];
+  assert.equal(name, 'Test.html');
+  assert.ok(!app.element('downloadPanel').classList.contains('hide'));
+  assert.equal(app.element('offlineFile').href, href);
+  assert.equal(app.element('openOffline').href, href);
+  const output = await app.blobs.get(href).text();
   const script = output.match(/<script>([\s\S]*?)<\/script>/)?.[1];
-  assert.ok(script, 'Export must contain a properly closed script');
-  assert.ok(!/<script\s+src=/i.test(output), 'Export must work without external scripts');
-  const offline = { document };
+  assert.ok(script);
+  assert.ok(!/<script\s+src=/i.test(output));
+  const offline = { document: app.document, setTimeout() {}, clearTimeout() {} };
   vm.createContext(offline);
   vm.runInContext(script, offline);
-  assert.equal(element('a').children.length, 4);
-  assert.equal(element('q').textContent, question.q);
-  element('a').children[0].onclick();
-  element('next').onclick();
-  assert.match(element('done').textContent, /100 von 100/);
-  element('restart').onclick();
-  assert.equal(element('a').children.length, 4);
-  assert.match(element('n').textContent, /Punkte: 0/);
+  assert.equal(app.element('a').children.length, 4);
+  assert.equal(app.element('q').textContent, question.q);
+  app.element('a').children[0].onclick();
+  app.element('next').onclick();
+  assert.match(app.element('done').textContent, /100 von 100/);
+  app.element('restart').onclick();
+  assert.equal(app.element('a').children.length, 4);
+  assert.match(app.element('n').textContent, /Punkte: 0/);
+  assert.equal(typeof app.element('read').onclick, 'function');
+});
+
+test('speech follows shuffled visible answers and pauses the timer', async () => {
+  const app = fixture({ quiz: { topic: 'Test', questions: [{ q: 'Eine Frage', options: ['Apfel', 'Birne', 'Citrone', 'Dattel'], correct: 0, explanation: 'Erklärung' }] } });
+  app.element('timeLimit').value = '30';
+  await app.element('start').onclick();
+  const visible = app.element('answers').children.map(button => button.textContent.split(' · ')[1]);
+  app.element('speak').onclick();
+  for (const tick of app.intervals.values()) tick();
+  assert.equal(app.element('timer').textContent, 30);
+  for (let k = 0; k < 8; k++) app.speechStep();
+  assert.deepEqual(app.spoken.map(u => u.text), ['Eine Frage', 'Antwort Ah.', visible[0], 'Antwort Be.', visible[1], 'Antwort Zeh.', visible[2], 'Antwort De.', visible[3]]);
+  assert.ok(app.spoken.every(u => u.lang === 'de-DE' && u.voice.lang === 'de-DE'));
+  app.element('speak').onclick();
+  for (const tick of app.intervals.values()) tick();
+  assert.equal(app.element('timer').textContent, 29);
+});
+
+test('class join requires a name before connecting', async () => {
+  const app = fixture({ url: 'https://quiz.test/?join=1&room=room-1234567890123456#key=key-1234567890123456', Peer: class { constructor() { throw new Error('Must not connect without a name'); } } });
+  app.element('nickname').value = '';
+  await app.element('start').onclick();
+  assert.match(app.element('status').textContent, /Namen oder Spitznamen/);
+  assert.ok(app.element('quizSettings').classList.contains('hide'));
+  assert.equal(app.element('nickname').required, true);
+});
+
+test('teacher UI lists named students and sends one shared quiz without additional student AI requests', async () => {
+  const Peer = fakePeers();
+  const quiz = { topic: 'Test', questions: [{ q: 'Gemeinsame Frage', options: ['eins', 'zwei', 'drei', 'vier'], correct: 0, explanation: 'Darum.' }] };
+  const teacher = fixture({ quiz, Peer });
+  await teacher.element('classStart').onclick();
+  const url = teacher.element('classLink').href;
+  assert.ok(url.includes('room='));
+  assert.ok(!teacher.element('classDashboard').classList.contains('hide'));
+  const first = fixture({ url, Peer }), second = fixture({ url, Peer });
+  first.context.fetch = second.context.fetch = () => { throw new Error('Students must receive the teacher quiz'); };
+  first.element('nickname').value = 'Mia'; second.element('nickname').value = 'Ali';
+  await Promise.all([first.element('start').onclick(), second.element('start').onclick()]);
+  assert.equal(teacher.element('participantCount').textContent, '2 beigetreten · 2 verbunden');
+  assert.deepEqual(teacher.element('participantList').children.map(row => row.children[0].children[0].textContent).sort(), ['Ali', 'Mia']);
+  assert.equal(first.element('question').textContent, quiz.questions[0].q);
+  assert.equal(second.element('question').textContent, quiz.questions[0].q);
+  first.element('answers').children.find(button => button.dataset.original === '0').onclick();
+  first.element('next').onclick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(teacher.element('participantList').children[0].children[1].textContent, /Fertig/);
+  teacher.element('downloadRoster').onclick();
+  assert.match(teacher.downloads[0].name, /Teilnehmer.*csv/);
+  const saved = await teacher.blobs.get(teacher.downloads[0].href).text();
+  assert.ok(saved.includes('Mia') && saved.includes('Ali'));
+  teacher.element('closeClass').onclick();
+  for (const callback of teacher.timers.values()) callback();
 });
