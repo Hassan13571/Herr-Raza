@@ -2,8 +2,9 @@
   "name": "herr-raza-quiz",
   "private": true,
   "version": "1.0.0",
+  "scripts": { "test": "node --test tests/*.test.js" },
   "engines": { "node": "24.x" },
   "dependencies": {
-    "ai": "latest"
+    "ai": "^7.0.0"
   }
 }

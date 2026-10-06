@@ -1,3 +1,5 @@
+const {generateFreeText,publicAIError,FreeAIError}=require('../lib/free-ai');
+
 function restrictedTopic(t){
   return /(?:waffe|pistole|gewehr|munition|messer|sprengstoff|bombe|drogen|cannabis|thc|kokain|heroin|meth|vape|zigarette|nikotin|alkohol|porno|pornografie|glücksspiel|casino|wetten|betting)/i.test(t);
 }
@@ -15,7 +17,7 @@ function difficultyText(d){
 
 async function wikiJSON(params){
   const url='https://de.wikipedia.org/w/api.php?'+new URLSearchParams({...params,format:'json',origin:'*'}).toString();
-  const r=await fetch(url,{headers:{
+  const r=await fetch(url,{signal:AbortSignal.timeout(3000),headers:{
     'User-Agent':'Herr-Raza-Quiz/5.0 (https://herr-raza-k11j-ras-projects-f153c026.vercel.app/) educational quiz',
     'Api-User-Agent':'Herr-Raza-Quiz/5.0 (https://herr-raza-k11j-ras-projects-f153c026.vercel.app/)',
     'Accept':'application/json'
@@ -51,7 +53,7 @@ async function duckContext(topic){
   const url='https://api.duckduckgo.com/?'+new URLSearchParams({
     q:topic,format:'json',no_html:'1',no_redirect:'1',skip_disambig:'1'
   }).toString();
-  const r=await fetch(url,{headers:{'User-Agent':'Herr-Raza-Quiz/5.0 educational quiz','Accept':'application/json'}});
+  const r=await fetch(url,{signal:AbortSignal.timeout(3000),headers:{'User-Agent':'Herr-Raza-Quiz/5.0 educational quiz','Accept':'application/json'}});
   if(!r.ok)throw new Error('DuckDuckGo HTTP '+r.status);
   const d=await r.json();
   const text=clean(d.AbstractText||d.Definition||(typeof d.Answer==='string'?d.Answer:''));
@@ -68,7 +70,7 @@ async function gdeltContext(topic){
   const url='https://api.gdeltproject.org/api/v2/doc/doc?'+new URLSearchParams({
     query:topic,mode:'artlist',maxrecords:'10',format:'json',sort:'datedesc'
   }).toString();
-  const r=await fetch(url,{headers:{'User-Agent':'Herr-Raza-Quiz/5.0 educational quiz','Accept':'application/json'}});
+  const r=await fetch(url,{signal:AbortSignal.timeout(3000),headers:{'User-Agent':'Herr-Raza-Quiz/5.0 educational quiz','Accept':'application/json'}});
   if(!r.ok)throw new Error('Live-Suche HTTP '+r.status);
   const d=await r.json();
   const articles=(d.articles||[]).filter(a=>a&&a.title&&/^https?:\/\//.test(String(a.url||''))).slice(0,8);
@@ -89,7 +91,7 @@ async function googleNewsContext(topic){
   const url='https://news.google.com/rss/search?'+new URLSearchParams({
     q:topic,hl:'de',gl:'DE',ceid:'DE:de'
   }).toString();
-  const r=await fetch(url,{headers:{'User-Agent':'Herr-Raza-Quiz/5.1 educational quiz','Accept':'application/rss+xml, application/xml, text/xml'}});
+  const r=await fetch(url,{signal:AbortSignal.timeout(3000),headers:{'User-Agent':'Herr-Raza-Quiz/5.1 educational quiz','Accept':'application/rss+xml, application/xml, text/xml'}});
   if(!r.ok)throw new Error('News-RSS HTTP '+r.status);
   const xml=await r.text();
   const blocks=[...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].slice(0,8);
@@ -132,24 +134,35 @@ async function buildGrounding(topic,mode){
   return normalizeGrounding([...background.items.slice(0,3),...live.items.slice(0,7)]);
 }
 
-async function gatewayText(prompt){
-  const {generateText}=await import('ai');
-  const models=['stealth/pixel-canary','inclusionai/ling-3.1-flash-free'];
-  let last=null;
-  for(const model of models){
-    try{
-      const result=await Promise.race([
-        generateText({model,prompt,maxOutputTokens:2600,reasoning:'none'}),
-        new Promise((_,reject)=>setTimeout(()=>reject(new Error('KI-Zeitlimit')),18000))
-      ]);
-      const text=String(result&&result.text||'').trim();
-      if(text)return text;
-      last=new Error('Leere KI-Antwort');
-    }catch(e){last=e;}
-  }
-  throw last||new Error('Kostenlose KI ist gerade nicht verfügbar.');
-}
 function parseQuizText(raw,count,sources){
+  const jsonText=String(raw||'').replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/^\s*```(?:json)?\s*/i,'').replace(/\s*```\s*$/,'').trim();
+  const candidates=[jsonText];
+  for(const [open,close] of [['{','}'],['[',']']]){
+    const start=jsonText.indexOf(open),end=jsonText.lastIndexOf(close);
+    if(start>=0&&end>start)candidates.push(jsonText.slice(start,end+1));
+  }
+  for(const candidate of candidates){
+    try{
+      const data=JSON.parse(candidate),list=Array.isArray(data)?data:data.questions;
+      if(!Array.isArray(list))continue;
+      const out=[],seen=new Set();
+      for(const item of list){
+        if(!item||typeof item!=='object')continue;
+        const q=clean(item.q||item.question),opts=item.options;
+        if(!q||!Array.isArray(opts)||opts.length!==4||opts.some(x=>typeof x!=='string'||!clean(x)))continue;
+        const options=opts.map(clean);
+        if(new Set(options.map(x=>x.toLowerCase())).size!==4||seen.has(q.toLowerCase()))continue;
+        const supplied=item.correct;
+        const correct=typeof supplied==='string'&&/^[ABCD]$/i.test(supplied)?'ABCD'.indexOf(supplied.toUpperCase()):supplied;
+        if(!Number.isInteger(correct)||correct<0||correct>3)continue;
+        const idx=item.sourceIndex,src=Number.isInteger(idx)&&idx>=0&&idx<sources.length?sources[idx]:null;
+        out.push({q,options,correct,explanation:clean(item.explanation||('Richtig ist: '+options[correct])),source:src?src.title:'KI-Wissensmodell',sourceUrl:src?src.url:''});
+        seen.add(q.toLowerCase());
+        if(out.length>=count)break;
+      }
+      if(out.length)return out;
+    }catch{}
+  }
   const lines=String(raw||'').replace(/\r/g,'').replace(/\x60\x60\x60(?:text)?/gi,'').split('\n');
   const blocks=[];let cur={};
   const push=()=>{if(Object.keys(cur).length){blocks.push(cur);cur={};}};
@@ -173,7 +186,7 @@ function parseQuizText(raw,count,sources){
     if(!q||options.some(x=>!x)||correct<0)continue;
     if(new Set(options.map(x=>x.toLowerCase())).size!==4)continue;
     const qn=clean(q);if(seen.has(qn.toLowerCase()))continue;seen.add(qn.toLowerCase());
-    const idx=Number(clean(b.SOURCE));
+    const idx=clean(b.SOURCE)?Number(clean(b.SOURCE)):-1;
     const src=Number.isInteger(idx)&&idx>=0&&idx<sources.length?sources[idx]:null;
     out.push({
       q:qn,options,correct,
@@ -341,14 +354,15 @@ function makePrompt(topic,count,difficulty,mode,grounding){
     '- Falsche Antworten sollen plausibel, aber klar falsch sein.',
     '- Keine Trickfragen, keine doppelten Fragen, kein "Alle Antworten".',
     '- Bei gefährlichen oder altersbeschränkten Themen niemals praktische Anleitungen, Beschaffung, Dosierungen oder Umgehung von Regeln.',
-    hasSources?'- Nutze für überprüfbare Fakten bevorzugt den Quellenkontext. SOURCE muss auf eine passende Quellen-Nummer zeigen.':'- Nutze nur stabiles, allgemein anerkanntes Wissen und setze SOURCE auf -1.',
+    hasSources?'- Nutze für überprüfbare Fakten bevorzugt den Quellenkontext. sourceIndex muss auf eine passende Quellen-Nummer zeigen.':'- Nutze nur stabiles, allgemein anerkanntes Wissen und setze sourceIndex auf -1.',
     mode==='live'?'- Frage aktuelle Fakten NUR ab, wenn sie ausdrücklich in den aktuellen Web-Meldungen stehen.':'',
     '',
     hasSources?'QUELLEN:\n'+sourceList+'\n\nKONTEXT:\n'+grounding.context:'',
     '',
-    'Antworte NUR im folgenden Zeilenformat, ohne Markdown:',
-    'QUESTION|Fragetext','A|Antwort A','B|Antwort B','C|Antwort C','D|Antwort D',
-    'CORRECT|A','WHY|kurze Begründung','SOURCE|0','END',
+    'Antworte NUR mit einem gültigen JSON-Objekt, ohne Markdown und ohne zusätzlichen Text.',
+    'Format: {"questions":[{"q":"Fragetext","options":["Antwort A","Antwort B","Antwort C","Antwort D"],"correct":0,"explanation":"Kurze Begründung","sourceIndex":-1}]}',
+    'correct ist der Index der richtigen Antwort: 0=A, 1=B, 2=C, 3=D.',
+    'sourceIndex ist die Nummer der verwendeten Quelle oder -1, wenn keine Quelle passt.',
     'Erzeuge genau '+count+' unterschiedliche Fragen.'
   ].filter(Boolean).join('\n');
 }
@@ -356,17 +370,13 @@ function makePrompt(topic,count,difficulty,mode,grounding){
 async function createQuiz(topic,count,difficulty,mode){
   const grounding=await buildGrounding(topic,mode);
   let questions=[];
-  let fallbackUsed=false;
+  let fallbackUsed=false,ai=null,aiError=null;
   try{
-    const raw=await gatewayText(makePrompt(topic,count,difficulty,mode,grounding));
-    questions=parseQuizText(raw,count,grounding.sources);
-    if(questions.length<Math.min(3,count)){
-      const retryPrompt=makePrompt(topic,count,difficulty,mode,grounding)+'\\nWICHTIG: Halte das Zeilenformat exakt ein. Jede Frage muss mit END abgeschlossen werden.';
-      const raw2=await gatewayText(retryPrompt);
-      const retry=parseQuizText(raw2,count,grounding.sources);
-      if(retry.length>questions.length)questions=retry;
-    }
-  }catch(e){console.warn('ai-primary',e.message);}
+    ai=await generateFreeText(makePrompt(topic,count,difficulty,mode,grounding),{maxOutputTokens:Math.max(1800,count*350),validateText:text=>parseQuizText(text,count,grounding.sources).length>=Math.min(3,count)});
+    questions=parseQuizText(ai.text,count,grounding.sources);
+    if(!questions.length)throw new FreeAIError('invalid_response','Die KI-Antwort enthält keine gültigen Quizfragen.');
+  }catch(e){aiError=publicAIError(e);console.warn('ai-primary',JSON.stringify({code:aiError.code}));}
+  const aiQuestionCount=questions.length;
   const seen=new Set(questions.map(q=>q.q.toLowerCase()));
   if(questions.length<count&&grounding.items.length){
     const fallback=deterministicQuestions(topic,count-questions.length,difficulty,grounding,seen);
@@ -374,23 +384,28 @@ async function createQuiz(topic,count,difficulty,mode){
     questions.push(...fallback);
   }
   if(questions.length<Math.min(3,count))throw new Error('Es konnten nicht genug zuverlässige Fragen aus den verfügbaren Quellen erstellt werden.');
-  return {questions:questions.slice(0,count),fallbackUsed};
+  return {questions:questions.slice(0,count),fallbackUsed,aiQuestionCount,
+    ai:{connected:aiQuestionCount>0,model:aiQuestionCount>0?ai.model:null,modelName:aiQuestionCount>0?ai.modelName:null,pricing:aiQuestionCount>0?'free':null,unlimited:false},
+    warning:aiError?aiError.message:null};
 }
 
 module.exports=async function handler(req,res){
-  res.setHeader('Cache-Control','s-maxage=1800, stale-while-revalidate=7200');
+  res.setHeader('Cache-Control','no-store');
   res.setHeader('Access-Control-Allow-Origin','*');
   if(req.method==='OPTIONS')return res.status(204).end();
   if(req.method!=='GET')return res.status(405).json({error:'Nur GET ist erlaubt.'});
   const topic=clean(req.query.topic).slice(0,100);
-  const count=Math.min(15,Math.max(3,Number(req.query.count)||10));
+  const count=Math.min(15,Math.max(3,Math.trunc(Number(req.query.count)||10)));
   const difficulty=['easy','medium','hard','expert'].includes(req.query.difficulty)?req.query.difficulty:'medium';
   const mode=req.query.mode==='live'?'live':'school';
   if(!topic)return res.status(400).json({error:'Bitte ein Thema angeben.'});
   if(restrictedTopic(topic))return res.status(400).json({error:'Dieses Thema ist für die Quiz-Suche nicht verfügbar.'});
   try{
     const result=await createQuiz(topic,count,difficulty,mode);
-    return res.status(200).json({topic,count:result.questions.length,difficulty,mode,questions:result.questions,engine:'free-ai-with-source-fallback'});
+    const engine=result.aiQuestionCount?(result.fallbackUsed?'free-ai-with-source-fallback':'free-ai'):'source-fallback';
+    if(result.ai.connected&&!result.fallbackUsed)res.setHeader('Cache-Control',mode==='live'?'s-maxage=120, stale-while-revalidate=300':'s-maxage=1800, stale-while-revalidate=7200');
+    console.info('quiz-result',JSON.stringify({engine,model:result.ai.model,aiQuestionCount:result.aiQuestionCount,count:result.questions.length}));
+    return res.status(200).json({topic,count:result.questions.length,difficulty,mode,...result,engine});
   }catch(err){
     console.error('quiz-error',err);
     return res.status(502).json({error:'Das Quiz konnte gerade nicht erstellt werden.',details:String(err&&err.message||err)});
