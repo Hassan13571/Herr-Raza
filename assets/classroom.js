@@ -1,6 +1,7 @@
 (function (root) {
   'use strict';
   const VERSION = 1;
+  const Images = root.RazaQuizImages || (typeof module === 'object' && module.exports ? require('./quiz-images') : null);
   const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{16,80}$/.test(value);
   const cleanName = value => typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 24) : '';
   function validQuiz(quiz) {
@@ -8,7 +9,8 @@
       && quiz.questions.length > 0 && quiz.questions.length <= 50 && quiz.questions.every(q =>
         q && typeof q.q === 'string' && q.q.length <= 4000 && Array.isArray(q.options) && q.options.length === 4
         && q.options.every(o => typeof o === 'string' && o.length <= 2000)
-        && Number.isInteger(q.correct) && q.correct >= 0 && q.correct < 4 && typeof q.explanation === 'string');
+        && Number.isInteger(q.correct) && q.correct >= 0 && q.correct < 4 && typeof q.explanation === 'string'
+        && (!q.image || !!Images?.normalizeImage(q.image) && !Object.prototype.hasOwnProperty.call(q.image, 'data')));
   }
   function connectionError(error) {
     if (error?.type === 'peer-unavailable') return 'Die Lehrerseite ist nicht erreichbar. Sie muss geöffnet bleiben. Bitte erneut verbinden.';

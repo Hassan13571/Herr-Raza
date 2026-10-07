@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { webcrypto } = require('node:crypto');
 const { Host, Guest } = require('../assets/classroom');
 const { createTransport } = require('../assets/live-relay');
+const image = { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Example.jpg/480px-Example.jpg', alt: 'plant cell', author: 'Example Artist', license: 'CC BY-SA 4.0', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Example.jpg', licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0/' };
 function relayServer() {
   const cache = new Map(), listeners = new Map(), requests = [];
   class EventSource {
@@ -30,7 +31,7 @@ function relayServer() {
 test('encrypted HTTPS relay shares all 50 questions with two students and keeps names out of server messages', async () => {
   const server = relayServer(), Peer = createTransport({ ...server, crypto: webcrypto });
   const host = new Host(Peer), first = new Guest(Peer), second = new Guest(Peer);
-  const quiz = { topic: 'Test', questions: Array.from({ length: 50 }, (_, i) => ({ q: 'Gemeinsame Frage ' + i + ' mit längerer Erklärung', options: ['eins', 'zwei', 'drei', 'vier'], correct: 0, explanation: 'Ein ausführlicher Erklärungstext. '.repeat(20) })) };
+  const quiz = { topic: 'Test', questions: Array.from({ length: 50 }, (_, i) => ({ q: 'Gemeinsame Frage ' + i + ' mit längerer Erklärung', options: ['eins', 'zwei', 'drei', 'vier'], correct: 0, explanation: 'Ein ausführlicher Erklärungstext. '.repeat(20), image })) };
   const room = 'room-1234567890123456', key = 'key-1234567890123456';
   try {
     await host.open(quiz, { time: '0', shuffle: 'yes' }, key, room);

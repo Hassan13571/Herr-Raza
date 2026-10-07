@@ -11,8 +11,8 @@ function fixture({ quiz, url = 'https://quiz.test/', Peer } = {}) {
     const result = { id, value: '', children: [], style: {}, dataset: {}, disabled: false, textContent: '',
       classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c), toggle(c, force) { const add = force === undefined ? !classes.has(c) : force; if (add) classes.add(c); else classes.delete(c); } },
       addEventListener() {}, focus() {}, scrollIntoView() {}, replaceChildren(...children) { this.children = children; }, appendChild(child) { this.children.push(child); },
-      remove() {}, click() { if (this.href) downloads.push({ href: this.href, name: this.download }); return this.onclick?.(); },
-      querySelectorAll() { return [...elements.values()].filter(e => ['topic', 'sourceText', 'count', 'difficulty', 'mode', 'timeLimit', 'shuffle'].includes(e.id)); } };
+      remove() {}, removeAttribute(name) { delete this[name]; }, click() { if (this.href) downloads.push({ href: this.href, name: this.download }); return this.onclick?.(); },
+      querySelectorAll() { return [...elements.values()].filter(e => ['topic', 'sourceText', 'count', 'difficulty', 'mode', 'timeLimit', 'shuffle', 'images'].includes(e.id)); } };
     Object.defineProperty(result, 'innerHTML', { get() { return this._html || ''; }, set(html) { this._html = html;
       if (id === 'answers') this.children = [...html.matchAll(/data-original="(\d+)">([\s\S]*?)<\/button>/g)].map(match => { const button = node(); button.dataset.original = match[1]; button.textContent = match[2]; return button; });
     } });
@@ -30,10 +30,10 @@ function fixture({ quiz, url = 'https://quiz.test/', Peer } = {}) {
     setTimeout(callback) { const id = ++serial; timers.set(id, callback); return id; }, clearTimeout: id => timers.delete(id),
     setInterval(callback) { const id = ++serial; intervals.set(id, callback); return id; }, clearInterval: id => intervals.delete(id),
     speechSynthesis: synthesis, SpeechSynthesisUtterance: class { constructor(text) { this.text = text; } },
-    fetch: async () => ({ ok: true, json: async () => quiz }), AbortSignal, scrollTo() {}, console, prompt() {} };
+    fetch: async () => ({ ok: true, json: async () => quiz }), AbortSignal, btoa: value => Buffer.from(value, 'binary').toString('base64'), scrollTo() {}, console, prompt() {} };
   context.window = { RazaRelay: { Peer } };
   vm.createContext(context);
-  for (const file of ['speech.js', 'classroom.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets', file), 'utf8'), context);
+  for (const file of ['speech.js', 'quiz-images.js', 'classroom.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets', file), 'utf8'), context);
   const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
   const script = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m => m[1]).find(s => s.includes('function downloadCurrentQuiz'));
   vm.runInContext(script, context);

@@ -1,7 +1,9 @@
 {
   "functions": {
     "api/quiz.js": { "maxDuration": 270 },
-    "api/ai-status.js": { "maxDuration": 60 }
+    "api/ai-status.js": { "maxDuration": 60 },
+    "api/quiz-images.js": { "maxDuration": 15 },
+    "api/quiz-image.js": { "maxDuration": 10 }
   },
   "headers": [
     { "source": "/api/(.*)", "headers": [ { "key": "X-Content-Type-Options", "value": "nosniff" } ] }
