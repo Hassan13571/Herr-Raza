@@ -1,7 +1,8 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { extract, validateFiles, pageText, combine } = require('../assets/material-import');
+const { extract, validateFiles, pageText, combine, create } = require('../assets/material-import');
+const { fixture } = require('./browser-fixture');
 const { pdfFixture } = require('./pdf-fixture');
 test('actual PDF.js extracts a local PDF without OCR or transmitting its bytes', async () => {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
@@ -28,4 +29,49 @@ test('more than 50 PDF pages require an explicit range rather than silent trunca
   const file = new File([pdfFixture()], 'lang.pdf');
   const pdf = { getDocument: () => ({ promise: Promise.resolve({ numPages: 51 }), destroy: async () => { destroyed++; } }) };
   await assert.rejects(extract([file], { loadPDF: async () => pdf }), /mehr als 50/); assert.equal(destroyed, 1);
+});
+test('OCR failures during cancellation are handled and image memory is released', async () => {
+  const controller = new AbortController(), canvas = { width: 1200, height: 800 };
+  await assert.rejects(extract([new File(['photo'], 'foto.png')], {
+    signal: controller.signal, imageCanvas: async () => canvas,
+    createWorker: async () => ({ recognize: () => { controller.abort(); return Promise.reject(new Error('worker terminated')); }, terminate: async () => {} })
+  }), /Abgebrochen/);
+  assert.equal(canvas.width, 0); assert.equal(canvas.height, 0);
+  await new Promise(setImmediate);
+});
+test('unreadable pages are counted rather than silently presented as a complete import', async () => {
+  let page = 0;
+  const result = await extract(['eins.png', 'zwei.png'].map(name => new File(['photo'], name)), {
+    imageCanvas: async () => ({ width: 1, height: 1 }),
+    createWorker: async () => ({ recognize: async () => ({ data: { text: ++page === 1 ? 'Lesbarer Text.' : '', confidence: 80 } }), terminate: async () => {} })
+  });
+  assert.equal(result.pages, 2); assert.equal(result.emptyPages, 1); assert.equal(result.text, 'Lesbarer Text.');
+});
+test('file selection starts in the background and a failed second import cannot apply stale text', async () => {
+  const app = fixture(), $ = app.element; let requests = 0;
+  $('sourceText').value = 'Mein ursprünglicher Text';
+  const material = create({ document: app.document, onApply: text => { $('sourceText').value = text; }, extractFiles: async () => {
+    if (++requests === 1) return { text: 'Erster gelesener Text', pages: 1, ocrPages: 0 };
+    throw new Error('Die neue Datei kann nicht gelesen werden.');
+  } });
+  $('materialFiles').files = [new File(['photo'], 'eins.png')];
+  assert.equal($('materialFiles').onchange(), undefined); assert.equal(material.running, true);
+  await new Promise(setImmediate); assert.equal($('importReview').classList.contains('hide'), false);
+  $('materialFiles').files = [new File(['photo'], 'zwei.png')]; $('materialFiles').onchange();
+  assert.equal($('importReview').classList.contains('hide'), true); await new Promise(setImmediate);
+  assert.equal(material.running, false); assert.equal($('replaceText').disabled, true); assert.equal($('appendText').disabled, true);
+  $('replaceText').onclick(); assert.equal($('sourceText').value, 'Mein ursprünglicher Text');
+  assert.match($('importStatus').textContent, /neue Datei/); assert.equal($('importText').value, '');
+});
+test('cancelled and superseded imports cannot replace the latest successful text or status', async () => {
+  const app = fixture(), $ = app.element, pending = [];
+  const material = create({ document: app.document, onApply: text => { $('sourceText').value = text; }, extractFiles: (files, options) => new Promise(resolve => pending.push({ resolve, options })) });
+  $('materialFiles').files = [new File(['photo'], 'eins.png')]; $('materialFiles').onchange();
+  $('cancelImport').onclick();
+  $('materialFiles').files = [new File(['photo'], 'zwei.png')]; $('materialFiles').onchange();
+  pending[1].resolve({ text: 'Neuer Text', pages: 1, ocrPages: 1, emptyPages: 0 }); await new Promise(setImmediate);
+  const status = $('importStatus').textContent;
+  pending[0].options.onProgress('Alter Fortschritt'); pending[0].resolve({ text: 'Alter Text', pages: 1 }); await new Promise(setImmediate);
+  assert.equal($('importText').value, 'Neuer Text'); assert.equal($('importStatus').textContent, status);
+  assert.equal(material.running, false); $('replaceText').onclick(); assert.equal($('sourceText').value, 'Neuer Text');
 });

@@ -30,4 +30,6 @@ PDF.js 6.4.299 (Apache-2.0) und Tesseract.js 7.0.0 (Apache-2.0) werden beim Impo
 
 ## Prüfen
 
-Node.js 24, `npm ci`, anschließend `npm test`. Die Tests prüfen die KI-Preis- und Qualitätsgrenzen, komplette Quizze mit 50 Fragen, Bildlizenzen, Offline-Spiel, Vorschau und Bearbeitung, Sammlung und Sicherungen, echte PDF-Texterkennung, Import-Abbruch sowie Klassenergebnisse mit ursprünglichen Antwortindizes.
+Node.js 24, `npm ci`, anschließend `npm test`. Die 81 Tests prüfen die KI-Preis- und Qualitätsgrenzen, komplette Quizze mit 50 Fragen, Bildlizenzen, Offline-Spiel, Vorschau und Bearbeitung, Sammlung und Sicherungen, echte PDF-Texterkennung, Import-Abbruch sowie Klassenergebnisse mit ursprünglichen Antwortindizes. Sie prüfen auch die tatsächliche Punkteanzeige, verspätete Verbindungsereignisse, ungültige Ergebnisnachrichten und den Schutz vor alten Texten nach einem fehlgeschlagenen Import. Nicht lesbare Seiten werden ausdrücklich gemeldet.
+
+Vor dem Unterricht das fertige Quiz prüfen und als HTML speichern. So kann es auch bei einem Ausfall der kostenlosen KI offline gespielt werden. Der Klassenmodus braucht Internet; die Lehrerseite muss offen bleiben. Automatische Tests und die KI-Prüfung ersetzen keine fachliche Prüfung der Fragen durch die Lehrkraft.

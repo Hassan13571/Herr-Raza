@@ -80,15 +80,16 @@
           const member = this.members.get(memberId);
           const total = this.quiz.questions.length;
           if (member.finished || !Number.isInteger(message.progress) || message.progress < member.progress || message.progress > total) return;
-          member.progress = message.progress;
-          if (message.type === 'finished' && message.progress === total && Number.isInteger(message.right) && message.right >= 0 && message.right <= total
-            && Number.isInteger(message.score) && message.score >= 0 && message.score <= total * 250) {
+          if (message.type === 'finished') {
+            if (message.progress !== total || !Number.isInteger(message.right) || message.right < 0 || message.right > total
+              || !Number.isInteger(message.score) || message.score < 0 || message.score > total * 250) return;
             if (message.answers !== undefined) {
               if (!Results.validAnswers(this.quiz.questions, message.answers) || message.answers.filter((n, i) => n === this.quiz.questions[i].correct).length !== message.right) return;
               member.answers = [...message.answers];
             }
             member.finished = true; member.right = message.right; member.score = message.score;
           }
+          member.progress = message.progress;
           this.changed();
         }
       });
@@ -114,7 +115,7 @@
       this.closed = false;
       this.connection?.close();
       if (this.peer) this.peer.destroy();
-      const { peer, opened } = openPeer(this.Peer, undefined, this.options.onStatus, { room, key });
+      const { peer, opened } = openPeer(this.Peer, undefined, message => { if (this.peer === peer) this.options.onStatus?.(message); }, { room, key });
       this.peer = peer;
       await opened;
       return new Promise((resolve, reject) => {
@@ -122,11 +123,11 @@
         const conn = peer.connect(room, { reliable: true, serialization: 'json' });
         this.connection = conn;
         const timer = setTimeout(() => { conn.close(); reject(new Error('Der Beitritt hat nicht geklappt. Die Seite der Lehrkraft muss offen bleiben. Bitte versuche es noch einmal.')); }, 15000);
-        const failed = message => { clearTimeout(timer); this.connected = false; this.options.onStatus?.(message, false); if (!accepted) reject(new Error(message)); };
+        const failed = message => { clearTimeout(timer); if (this.connection !== conn || this.peer !== peer) { if (!accepted) reject(new Error('Die Verbindung wurde neu geöffnet.')); return; } this.connected = false; this.options.onStatus?.(message, false); if (!accepted) reject(new Error(message)); };
         peer.on('error', error => failed(connectionError(error)));
         conn.on('open', () => conn.send({ v: VERSION, type: 'join', key, name: cleanName(name), id }));
         conn.on('data', message => {
-          if (!message || message.v !== VERSION) return;
+          if (this.connection !== conn || this.peer !== peer || !message || message.v !== VERSION) return;
           if (message.type === 'accepted' && validQuiz(message.quiz)) {
             clearTimeout(timer); accepted = true; this.connected = true;
             this.options.onStatus?.('Du bist dabei als ' + cleanName(name) + '. Deine Lehrkraft sieht deinen Namen.', true);
@@ -145,7 +146,7 @@
     close() { this.closed = true; this.connection?.close(); this.peer?.destroy(); this.connected = false; }
   }
   function csv(roster) {
-    const cell = value => '"' + String(value ?? '').replace(/^[=+@-]/, "'$&").replace(/"/g, '""') + '"';
+    const cell = value => '"' + String(value ?? '').replace(/^\s*[=+@-]/, "'$&").replace(/"/g, '""') + '"';
     const rows = [['Name', 'Beigetreten', 'Verbindung', 'Status', 'Richtige Antworten', 'Punkte'], ...roster.map(member => [
       member.name, member.joinedAt, member.connected ? 'Verbunden' : 'Getrennt', member.finished ? 'Fertig' : 'Im Quiz', member.right ?? '', member.score ?? ''
     ])];

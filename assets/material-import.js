@@ -12,8 +12,8 @@
       const abort = () => { cleanup(); reject(cancelled()); };
       const cleanup = () => { root.clearTimeout(timer); signal?.removeEventListener('abort', abort); };
       signal?.addEventListener('abort', abort, { once: true });
-      if (signal?.aborted) { abort(); return; }
       Promise.resolve(promise).then(v => { cleanup(); resolve(v); }, e => { cleanup(); reject(e); });
+      if (signal?.aborted) abort();
     });
   }
   function validateFiles(files) {
@@ -81,7 +81,12 @@
     try {
       for (const { file, pdf } of checked) {
         check(signal); onProgress(file.name + ' wird gelesen …');
-        if (!pdf) { if (++pageCount > 50) throw new Error('Wähle zusammen höchstens 50 Seiten oder Bilder aus.'); const canvas = await getCanvas(file, signal); chunks.push(await recognize(canvas, file.name)); canvas.width = canvas.height = 0; continue; }
+        if (!pdf) {
+          if (++pageCount > 50) throw new Error('Wähle zusammen höchstens 50 Seiten oder Bilder aus.');
+          const canvas = await getCanvas(file, signal);
+          try { chunks.push(await recognize(canvas, file.name)); } finally { canvas.width = canvas.height = 0; }
+          continue;
+        }
         const data = new Uint8Array(await file.arrayBuffer());
         if (String.fromCharCode(...data.slice(0, 5)) !== '%PDF-') throw new Error(file.name + ': Diese Datei ist keine PDF.');
         const pdfjs = await deadline(getPDF(), signal, 45000, 'PDF-Leser laden');
@@ -99,8 +104,10 @@
             const base = page.getViewport({ scale: 1 }), viewport = page.getViewport({ scale: Math.min(2, 2400 / Math.max(base.width, base.height)) });
             const canvas = root.document.createElement('canvas'); canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
             renderTask = page.render({ canvasContext: canvas.getContext('2d'), viewport, background: 'rgb(255,255,255)' });
-            await deadline(renderTask.promise, signal, 45000, 'PDF-Seite anzeigen'); renderTask = null;
-            text = await recognize(canvas, label); canvas.width = canvas.height = 0;
+            try {
+              await deadline(renderTask.promise, signal, 45000, 'PDF-Seite anzeigen'); renderTask = null;
+              text = await recognize(canvas, label);
+            } finally { canvas.width = canvas.height = 0; }
           }
           chunks.push(text); pageCount++; page.cleanup();
         }
@@ -108,7 +115,7 @@
       }
       check(signal); const text = chunks.filter(Boolean).join('\n\n').trim();
       if (!text) throw new Error('Kein Text gefunden. Bitte nutze ein scharfes, helles Foto.');
-      return { text, pages: pageCount, ocrPages: ocrCount, lowConfidence };
+      return { text, pages: pageCount, ocrPages: ocrCount, lowConfidence, emptyPages: chunks.filter(chunk => !chunk.trim()).length };
     } catch (error) {
       if (signal?.aborted) throw cancelled();
       if (error.name === 'PasswordException') throw new Error('Die PDF braucht ein Passwort. Bitte nutze eine PDF ohne Passwort.');
@@ -119,24 +126,29 @@
       try { await worker?.terminate(); } catch {}
     }
   }
-  function create({ document: doc = root.document, onApply, isLocked = () => false }) {
-    const $ = id => doc.getElementById(id); let controller = null;
+  function create({ document: doc = root.document, onApply, isLocked = () => false, extractFiles = extract }) {
+    const $ = id => doc.getElementById(id); let controller = null, reviewReady = false;
     const count = () => { $('importCount').textContent = $('importText').value.length.toLocaleString('de-DE') + ' / 60.000 Zeichen'; $('importCount').classList.toggle('text-limit', $('importText').value.length > 60000); };
     $('chooseMaterial').onclick = () => { if (!isLocked()) $('materialFiles').click(); };
-    $('materialFiles').onchange = async () => {
+    async function readFiles() {
       if (isLocked()) return; const files = Array.from($('materialFiles').files || []); if (!files.length) return;
       controller?.abort(); controller = new AbortController(); const active = controller;
+      reviewReady = false; $('importReview').classList.add('hide'); $('importText').value = ''; count();
       $('chooseMaterial').disabled = true; $('cancelImport').classList.remove('hide'); ['replaceText', 'appendText'].forEach(id => $(id).disabled = true);
       try {
-        const result = await extract(files, { signal: active.signal, firstPage: Number($('pdfFirst').value || 1), lastPage: Number($('pdfLast').value || 0), onProgress: message => { $('importStatus').textContent = message; } });
+        const result = await extractFiles(files, { signal: active.signal, firstPage: Number($('pdfFirst').value || 1), lastPage: Number($('pdfLast').value || 0), onProgress: message => { if (controller === active && !active.signal.aborted) $('importStatus').textContent = message; } });
+        check(active.signal); if (controller !== active) return;
+        reviewReady = true;
         $('importText').value = result.text; $('importReview').classList.remove('hide'); count();
-        $('importStatus').textContent = result.pages + ' Seiten oder Bilder gelesen.' + (result.ocrPages ? ' Bitte prüfe den Text auf Fehler.' : ' Bitte prüfe den Text.') + (result.lowConfidence ? ' Einige Wörter waren schwer zu lesen.' : '');
-      } catch (error) { $('importStatus').textContent = error.message; }
-      finally { if (controller === active) { controller = null; $('chooseMaterial').disabled = false; $('cancelImport').classList.add('hide'); ['replaceText', 'appendText'].forEach(id => $(id).disabled = false); $('materialFiles').value = ''; } }
-    };
+        $('importStatus').textContent = result.pages + ' Seiten oder Bilder gelesen.' + (result.emptyPages ? ' Auf ' + result.emptyPages + ' davon wurde kein Text gefunden.' : '') + (result.ocrPages ? ' Bitte prüfe den Text auf Fehler.' : ' Bitte prüfe den Text.') + (result.lowConfidence ? ' Einige Wörter waren schwer zu lesen.' : '');
+      } catch (error) { if (controller === active) $('importStatus').textContent = active.signal.aborted ? cancelled().message : error.message; }
+      finally { if (controller === active) { controller = null; $('chooseMaterial').disabled = isLocked(); $('cancelImport').classList.add('hide'); ['replaceText', 'appendText'].forEach(id => $(id).disabled = !reviewReady); $('materialFiles').value = ''; } }
+    }
+    $('materialFiles').onchange = () => { void readFiles(); };
     $('cancelImport').onclick = () => controller?.abort();
     $('importText').addEventListener('input', count);
     for (const [id, append] of [['replaceText', false], ['appendText', true]]) $(id).onclick = () => {
+      if (controller || !reviewReady) return;
       if (isLocked()) { $('importStatus').textContent = 'Bitte warte, bis das Quiz fertig ist. Oder beende das Quiz für die Klasse.'; return; }
       try { const text = combine($('sourceText').value, $('importText').value, append); onApply(text); $('importStatus').textContent = 'Der Text ist bereit. Du kannst jetzt ein Quiz erstellen.'; } catch (error) { $('importStatus').textContent = error.message; }
     };

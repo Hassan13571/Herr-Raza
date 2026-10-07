@@ -51,3 +51,14 @@ test('invalid editor contents cannot start or save; add, reorder and remove pres
   app.element('editorQuestions').children[0].children.at(-1).children[2].onclick(); assert.equal(app.element('edit-option-0-0').value, 'geändert');
   await app.element('previewPlay').onclick(); assert.equal(app.element('quiz').classList.contains('hide'), false);
 });
+test('correct-answer feedback matches the actual points including streak and remaining time', async () => {
+  const app = fixture({ quiz: { ...quiz, questions: [quiz.questions[0], quiz.questions[0]] } });
+  app.element('timeLimit').value = '30'; await app.element('start').onclick(); await app.element('previewPlay').onclick();
+  for (let i = 0; i < 2; i++) {
+    const before = Number(app.element('score').textContent);
+    app.element('answers').children.find(button => button.dataset.original === '0').onclick();
+    const delta = Number(app.element('score').textContent) - before;
+    assert.equal(delta, 140 + i * 10); assert.match(app.element('feedback').innerHTML, new RegExp('\\+' + delta + ' Punkte'));
+    app.element('next').onclick();
+  }
+});

@@ -42,4 +42,34 @@ test('CSV export prevents spreadsheet formula execution', () => {
   assert.ok(output.startsWith('\ufeff'));
   assert.match(output, /"'=SUM\(1;2\)"/);
   assert.match(output, /"Verbunden"/);
+  assert.match(csv([{ name: '  =SUM(1;2)' }]), /"'  =SUM\(1;2\)"/);
+});
+test('invalid finish messages leave progress and results unchanged, allowing normal progress afterwards', async () => {
+  const Peer = fakePeers(), host = new Host(Peer), guest = new Guest(Peer);
+  const questions = Array.from({ length: 3 }, () => quiz.questions[0]);
+  try {
+    await host.open({ ...quiz, questions }, {}, key, room);
+    await guest.join({ room, key, name: 'Test', id: 'student-1234567890123456' });
+    const before = host.roster();
+    for (const invalid of [{ progress: 3, right: 3, score: 330, answers: [1, 1, 1] }, { progress: 3, right: 3, score: 10000 }, { progress: 2, right: 2, score: 220 }]) {
+      guest.send({ type: 'finished', ...invalid }); await flush();
+      assert.deepEqual(host.roster(), before);
+    }
+    guest.progress(1); await flush(); assert.equal(host.roster()[0].progress, 1);
+    guest.finish(3, 2, 230, [0, 1, 0]); await flush();
+    assert.equal(host.roster()[0].finished, true); assert.equal(host.roster()[0].right, 2);
+  } finally { guest.close(); host.close(); }
+});
+test('late events from a replaced connection cannot disconnect or close the new classroom connection', async () => {
+  const Peer = fakePeers(), host = new Host(Peer), statuses = [], guest = new Guest(Peer, { onStatus: message => statuses.push(message) });
+  const join = { room, key, name: 'Test', id: 'student-1234567890123456' };
+  try {
+    await host.open(quiz, {}, key, room); await guest.join(join);
+    const oldConnection = guest.connection, oldPeer = guest.peer;
+    await guest.join(join); const count = statuses.length;
+    oldConnection.emit('close'); oldConnection.emit('error', { type: 'peer-unavailable' });
+    oldPeer.emit('error', { type: 'peer-unavailable' }); oldConnection.emit('data', { v: 1, type: 'closed' });
+    assert.equal(guest.connected, true); assert.equal(guest.closed, false); assert.equal(statuses.length, count);
+    guest.finish(1, 1, 110, [0]); await flush(); assert.equal(host.roster()[0].finished, true);
+  } finally { guest.close(); host.close(); }
 });
