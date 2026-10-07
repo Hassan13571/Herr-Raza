@@ -43,6 +43,7 @@ test('search bounds and throttling do not cause unbounded calls or break quiz ge
   let res = response(); await handler({ method: 'POST', body: { queries: Array(7).fill('plant cell') } }, res); assert.equal(res.statusCode, 400);
   res = response(); await handler({ method: 'POST', body: '{' }, res); assert.equal(res.statusCode, 400);
   assert.equal(Images.query('https://private.test'), '');
+  assert.equal(Images.questionQuery({ q: 'Was stimmt zu „Im Fall der Erde schmelzen Gesteine ab“?' }, 'Vulkane'), 'Vulkane');
   const quiz = { topic: 'Test', questions: [question(0)] };
   const result = await Images.enrich(quiz, async () => { throw new Error('Search unavailable'); });
   assert.deepEqual(result.questions, quiz.questions);
