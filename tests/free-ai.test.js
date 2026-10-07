@@ -113,6 +113,16 @@ test('deadline cancels the underlying generation request', async () => {
   } finally { clearTimeout(keepAlive); }
 });
 
+test('individual attempt deadline cancels even when the total quiz deadline is longer', async () => {
+  const client = ai.createFreeAI({ fetcher: catalog([freeModel]), generate: options => new Promise((resolve, reject) => {
+    options.abortSignal.addEventListener('abort', () => reject(options.abortSignal.reason), { once: true });
+  }) });
+  const keepAlive = setTimeout(() => {}, 1000);
+  try {
+    await assert.rejects(client.generateFreeText('Test', { signal: AbortSignal.timeout(1000), attemptTimeoutMs: 20 }), { code: 'timeout' });
+  } finally { clearTimeout(keepAlive); }
+});
+
 function response() {
   return { headers: {}, setHeader(key, value) { this.headers[key] = value; }, status(code) { this.statusCode = code; return this; }, json(data) { this.body = data; return this; }, end() { return this; } };
 }

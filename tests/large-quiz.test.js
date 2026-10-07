@@ -10,7 +10,7 @@ const facts = Array.from({ length: 50 }, (_, n) => 'Im Lernabschnitt ' + (n + 1)
 const rawQuestion = n => ({ q: 'Was untersucht das Team in Lernabschnitt ' + (n + 1) + '?', options: ['Einen Vorgang', 'Ein Rezept', 'Einen Einkauf', 'Eine Sportart'], correct: 0, explanation: 'Es untersucht einen Vorgang.', sourceIndex: 0, quote: facts[n] });
 function response() { return { headers: {}, setHeader(k, v) { this.headers[k] = v; }, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; }, end() { return this; } }; }
 
-test('large text quizzes use bounded steps, keep evidence and stop after provider limits', async t => {
+test('large text quizzes request complete output, keep evidence and remain bounded to 50', async t => {
   const originalGenerate = ai.generateFreeText, originalFetch = global.fetch;
   let generate;
   ai.generateFreeText = (...args) => generate(...args);
@@ -18,67 +18,57 @@ test('large text quizzes use bounded steps, keep evidence and stop after provide
   const handler = require('../api/quiz');
   global.fetch = async () => { throw new Error('Own text must not search the web'); };
   try {
-    await t.test('50 distinct questions include the last section and accurate model counts', async () => {
-      const sizes = []; let offset = 0;
+    await t.test('one request produces 50 distinct questions including the last section', async () => {
+      let calls = 0;
       generate = async (prompt, options) => {
-        const count = Number(prompt.match(/^ANZAHL: (\d+)$/m)[1]);
-        assert.ok(count <= 15);
-        assert.ok(options.maxOutputTokens <= 9750);
-        assert.ok(options.signal instanceof AbortSignal);
+        calls++;
+        assert.match(prompt, /^ANZAHL: 50$/m);
         assert.ok(prompt.includes(JSON.stringify(facts.join('\n\n'))));
-        if (offset) assert.ok(prompt.includes(JSON.stringify(rawQuestion(offset - 1).q)));
-        const questions = Array.from({ length: count }, (_, n) => rawQuestion(offset + n));
-        const text = JSON.stringify({ questions });
+        assert.equal(options.maxOutputTokens, 32500);
+        assert.equal(options.attemptTimeoutMs, 220000);
+        assert.ok(options.signal instanceof AbortSignal);
+        const text = JSON.stringify({ questions: Array.from({ length: 50 }, (_, n) => rawQuestion(n)) });
         assert.ok(options.validateText(text));
-        const model = sizes.length % 2 ? 'verified/free-b' : 'verified/free-a';
-        sizes.push(count); offset += count;
-        return { text, model, modelName: model };
+        return { text, model: 'verified/free', modelName: 'Free' };
       };
       const res = response();
       await handler({ method: 'POST', body: { sourceText: facts.join('\n\n'), count: 50, difficulty: 'hard' } }, res);
       assert.equal(res.statusCode, 200);
-      assert.deepEqual(sizes, [15, 15, 15, 5]);
+      assert.equal(calls, 1);
       assert.equal(res.body.count, 50);
       assert.equal(res.body.requestedCount, 50);
       assert.equal(res.body.aiQuestionCount, 50);
       assert.equal(res.body.engine, 'free-ai');
       assert.equal(new Set(res.body.questions.map(q => q.q)).size, 50);
       assert.equal(res.body.questions[49].sourceQuote, facts[49]);
-      assert.deepEqual(res.body.ai.models.map(m => m.questionCount), [30, 20]);
       assert.equal(res.body.ai.pricing, 'free');
       assert.ok(validQuiz(res.body));
       assert.equal(validQuiz({ ...res.body, questions: [...res.body.questions, res.body.questions[0]] }), false);
     });
-    await t.test('a later quota error keeps existing questions and stops further AI requests', async () => {
+    await t.test('API inputs above the maximum never request more than 50 questions', async () => {
+      generate = async (prompt, options) => {
+        assert.match(prompt, /^ANZAHL: 50$/m);
+        assert.ok(options.maxOutputTokens <= 32768);
+        return { text: JSON.stringify({ questions: Array.from({ length: 50 }, (_, n) => rawQuestion(n)) }), model: 'verified/free' };
+      };
+      const res = response();
+      await handler({ method: 'POST', body: { sourceText: facts.join('\n\n'), count: 1000 } }, res);
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.body.requestedCount, 50);
+      assert.equal(res.body.count, 50);
+    });
+    await t.test('repeated model questions cannot be counted as 50 AI questions', async () => {
       let calls = 0;
       generate = async () => {
-        if (++calls === 2) throw new ai.FreeAIError('quota', 'Kostenloses Limit erreicht.');
-        return { text: JSON.stringify({ questions: Array.from({ length: 15 }, (_, n) => rawQuestion(n)) }), model: 'verified/free-a' };
+        calls++;
+        return { text: JSON.stringify({ questions: Array.from({ length: 50 }, (_, n) => rawQuestion(n % 25)) }), model: 'verified/free' };
       };
       const res = response();
       await handler({ method: 'POST', body: { sourceText: facts.join('\n\n'), count: 50 } }, res);
       assert.equal(res.statusCode, 200);
-      assert.equal(calls, 2);
-      assert.equal(res.body.aiQuestionCount, 15);
-      assert.equal(res.body.warning, 'Kostenloses Limit erreicht.');
-      assert.ok(res.body.questions.length <= 50);
-      assert.deepEqual(res.body.questions.slice(0, 15).map(q => q.q), Array.from({ length: 15 }, (_, n) => rawQuestion(n).q));
-    });
-    await t.test('repeated questions across steps fail validation instead of filling the quiz', async () => {
-      let calls = 0;
-      generate = async (prompt, options) => {
-        const text = JSON.stringify({ questions: Array.from({ length: 15 }, (_, n) => rawQuestion(n)) });
-        if (++calls === 2) {
-          assert.equal(options.validateText(text), false);
-          throw new ai.FreeAIError('invalid_response', 'Keine neuen Fragen.');
-        }
-        return { text, model: 'verified/free-a' };
-      };
-      const res = response();
-      await handler({ method: 'POST', body: { sourceText: facts.join('\n\n'), count: 50 } }, res);
-      assert.equal(res.statusCode, 200);
-      assert.equal(calls, 2);
-      assert.equal(res.body.aiQuestionCount, 15);
+      assert.equal(calls, 1);
+      assert.equal(res.body.aiQuestionCount, 25);
+      assert.equal(res.body.requestedCount, 50);
       assert.equal(new Set(res.body.questions.map(q => q.q.toLowerCase())).size, res.body.questions.length);
     });
   } finally {
