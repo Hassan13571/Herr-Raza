@@ -150,8 +150,9 @@ function textGrounding(sourceText){
   return {sources:[{title:'Dein Text',url:''}],items:[{sourceIndex:0,text:sourceText,kind:'background'}],context:sourceText,inputText:clean(sourceText).normalize('NFC')};
 }
 
-function parseQuizText(raw,count,grounding,includeImages=false){
+function parseQuizText(raw,count,grounding,includeImages=false,diagnostics){
   const {sources,inputText=''}=grounding;
+  const reject=reason=>{if(diagnostics)diagnostics[reason]=(diagnostics[reason]||0)+1;};
   const jsonText=String(raw||'').replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/^\s*```(?:json)?\s*/i,'').replace(/\s*```\s*$/,'').trim();
   const candidates=[jsonText];
   for(const [open,close] of [['{','}'],['[',']']]){
@@ -161,21 +162,22 @@ function parseQuizText(raw,count,grounding,includeImages=false){
   for(const candidate of candidates){
     try{
       const data=JSON.parse(candidate),list=Array.isArray(data)?data:data.questions;
-      if(!Array.isArray(list))continue;
+      if(!Array.isArray(list)){reject('missing_questions');continue;}
       const out=[],seen=new Set();
       for(const item of list){
-        if(!item||typeof item!=='object')continue;
+        if(!item||typeof item!=='object'){reject('invalid_question');continue;}
         const q=clean(item.q||item.question),opts=item.options;
-        if(!q||!Array.isArray(opts)||opts.length!==4||opts.some(x=>typeof x!=='string'||!clean(x)))continue;
+        if(!q||!Array.isArray(opts)||opts.length!==4||opts.some(x=>typeof x!=='string'||!clean(x))){reject('invalid_options');continue;}
         const options=opts.map(clean);
-        if(new Set(options.map(x=>x.toLowerCase())).size!==4||seen.has(q.toLowerCase()))continue;
+        if(new Set(options.map(x=>x.toLowerCase())).size!==4||seen.has(q.toLowerCase())){reject('duplicate');continue;}
         const supplied=item.correct;
         const correct=typeof supplied==='string'&&/^[ABCD]$/i.test(supplied)?'ABCD'.indexOf(supplied.toUpperCase()):supplied;
-        if(!Number.isInteger(correct)||correct<0||correct>3)continue;
+        if(!Number.isInteger(correct)||correct<0||correct>3){reject('invalid_answer');continue;}
         const idx=item.sourceIndex,src=Number.isInteger(idx)&&idx>=0&&idx<sources.length?sources[idx]:null;
         const quote=clean(item.quote).normalize('NFC');
         const material=clean(grounding.items.find(x=>x.sourceIndex===idx)?.text).normalize('NFC');
-        if(sources.length&&(!src||inputText&&idx!==0||quote.length<15||quote.length>420||!material.includes(quote)))continue;
+        if(sources.length&&(!src||inputText&&idx!==0)){reject('invalid_source');continue;}
+        if(sources.length&&(quote.length<15||quote.length>420||!material.includes(quote))){reject('invalid_evidence');continue;}
         const explanation=clean(item.explanation||('Richtig ist: '+options[correct]));
         const imageQuery=includeImages?require('../assets/quiz-images').query(item.imageQuery):'';
         out.push({q,options,correct,explanation:explanation+(inputText?' Textstelle: „'+quote+'“':''),source:src?src.title:'KI-Wissensmodell',sourceUrl:src?src.url:'',sourceIndex:src?idx:-1,...(src?{sourceQuote:quote}:{}),...(includeImages?{imageQuery}:{})});
@@ -183,7 +185,7 @@ function parseQuizText(raw,count,grounding,includeImages=false){
         if(out.length>=count)break;
       }
       if(out.length)return out;
-    }catch{}
+    }catch{reject('invalid_json');}
   }
   // Quizzes with sources require a verifiable quote, which the legacy line format
   // cannot supply. Never accept ungrounded questions through that parser.
@@ -370,11 +372,12 @@ function makePrompt(topic,count,difficulty,mode,grounding,includeImages=false){
 async function createQuiz(topic,count,difficulty,mode,sourceText='',includeImages=false){
   const grounding=sourceText?textGrounding(sourceText):await buildGrounding(topic,mode);
   const parse=text=>parseQuizText(text,count,grounding,includeImages);
+  const validateDraft=text=>{const reasons={},accepted=parseQuizText(text,count,grounding,includeImages,reasons).length;if(accepted<Math.min(3,count))console.warn('quiz-validation',JSON.stringify({stage:'draft',accepted,reasons}));return accepted>=Math.min(3,count);};
   const deadline=AbortSignal.timeout(count>15?250000:62000);
   let questions=[];
   let fallbackUsed=false,ai=null,aiError=null,reviewStarted=false,quality={reviewed:false,checked:0,rejected:0};
   try{
-    ai=await generateFreeText(makePrompt(topic,count,difficulty,mode,grounding,includeImages),{instructions:QUIZ_INSTRUCTIONS,maxOutputTokens:Math.max(3000,count*(sourceText?650:500)),signal:AbortSignal.any([deadline,AbortSignal.timeout(count>15?225000:39000)]),attemptTimeoutMs:count>15?220000:29000,validateText:text=>parse(text).length>=Math.min(3,count)});
+    ai=await generateFreeText(makePrompt(topic,count,difficulty,mode,grounding,includeImages),{instructions:QUIZ_INSTRUCTIONS,maxOutputTokens:Math.max(3000,count*(sourceText?650:500)),signal:AbortSignal.any([deadline,AbortSignal.timeout(count>15?225000:39000)]),attemptTimeoutMs:count>15?220000:29000,validateText:validateDraft});
     questions=parse(ai.text);
     if(questions.length<Math.min(3,count))throw new FreeAIError('invalid_response','Die KI-Antwort enthält keine gültigen Quizfragen.');
     reviewStarted=true;
@@ -428,7 +431,7 @@ module.exports=async function handler(req,res){
     const result=await createQuiz(topic,count,difficulty,mode,sourceText,input.images===true||input.images==='yes');
     const engine=result.aiQuestionCount?'free-ai':'source-fallback';
     if(req.method==='GET'&&!sourceText&&result.ai.connected&&!result.fallbackUsed)res.setHeader('Cache-Control',mode==='live'?'s-maxage=120, stale-while-revalidate=300':'s-maxage=1800, stale-while-revalidate=7200');
-    console.info('quiz-result',JSON.stringify({engine,model:result.ai.model,aiQuestionCount:result.aiQuestionCount,count:result.questions.length}));
+    console.info('quiz-result',JSON.stringify({engine,model:result.ai.model,aiQuestionCount:result.aiQuestionCount,count:result.questions.length,quality:result.quality}));
     return res.status(200).json({topic,count:result.questions.length,difficulty,mode,inputType:sourceText?'text':'topic',...result,engine});
   }catch(err){
     console.error('quiz-error',err);
