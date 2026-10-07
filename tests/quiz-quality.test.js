@@ -126,6 +126,7 @@ test('an incidental mention in an image description is not enough to illustrate 
 test('the public label reflects review completion and an honest partial count', async () => {
   const app = fixture({ quiz: { topic: 'Pflanzenzelle', questions: valid(), requestedCount: 50, ai: { connected: true, modelName: 'Free' }, quality: { reviewed: true, checked: 7, rejected: 4 } } });
   await app.element('start').onclick();
+  if (!app.element('preview').classList.contains('hide')) await app.element('previewPlay').onclick();
   assert.match(app.element('generation').textContent, /auf Thema und Antworten geprüft/);
   assert.match(app.element('generation').textContent, /3 von 50/);
   assert.doesNotMatch(app.element('generation').textContent, /ergänzt durch/);

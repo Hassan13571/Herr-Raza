@@ -44,10 +44,13 @@ test('encrypted HTTPS relay shares all 50 questions with two students and keeps 
     first.progress(1); first.progress(2);
     await new Promise(resolve => setTimeout(resolve, 20));
     assert.equal(server.requests.length, before, 'Individual answers do not use the daily message allowance');
-    first.finish(50, 50, 7300);
-    for (let i = 0; i < 10 && !host.roster()[0].finished; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    first.finish(50, 50, 7300, Array(50).fill(0));
+    const deadline = Date.now() + 2000;
+    while (!host.roster()[0].finished && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal(host.roster()[0].finished, true);
     assert.equal(host.roster()[0].right, 50);
     assert.equal(host.roster()[0].score, 7300);
+    assert.deepEqual(host.roster()[0].answers, Array(50).fill(0));
+    assert.equal(server.requests.length, before + 1, 'All answer data uses the existing single encrypted result message');
   } finally { first.close(); second.close(); host.close(); }
 });

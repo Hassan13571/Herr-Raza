@@ -110,6 +110,7 @@ test('long text uses a POST body, supports an empty title and can be downloaded 
     return { ok: true, json: async () => ({ topic: 'Quiz aus deinem Text', questions: validQuestions().map(q => ({ ...q, source: 'Dein Text', sourceUrl: '' })) }) };
   };
   await app.element('downloadSetup').onclick();
+  await app.element('previewDownload').onclick();
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, '/api/quiz');
   assert.equal(calls[0].options.method, 'POST');
@@ -126,6 +127,7 @@ test('a text class shares only its finished questions, with named guests making 
   teacher.element('topic').value = '';
   teacher.element('sourceText').value = facts.join('\n\n');
   await teacher.element('classStart').onclick();
+  await teacher.element('previewClass').onclick();
   assert.equal(teacher.element('sourceText').disabled, true);
   const guest = fixture({ url: teacher.element('classLink').href, Peer });
   guest.element('nickname').value = 'Text-Test';

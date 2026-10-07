@@ -9,6 +9,7 @@ test('start-screen download creates a complete offline quiz with replay', async 
   const question = { q: 'Frage mit "Anführungszeichen" und </script>', options: ['A', 'B', 'C', 'D'], correct: 0, explanation: 'Erklärung' };
   const app = fixture({ quiz: { topic: 'Test', questions: [question] } });
   await app.element('downloadSetup').onclick();
+  await app.element('previewDownload').onclick();
   assert.equal(app.downloads.length, 1);
   const { href, name } = app.downloads[0];
   assert.equal(name, 'Test.html');
@@ -37,6 +38,7 @@ test('speech follows shuffled visible answers and pauses the timer', async () =>
   const app = fixture({ quiz: { topic: 'Test', questions: [{ q: 'Eine Frage', options: ['Apfel', 'Birne', 'Citrone', 'Dattel'], correct: 0, explanation: 'Erklärung' }] } });
   app.element('timeLimit').value = '30';
   await app.element('start').onclick();
+  if (!app.element('preview').classList.contains('hide')) await app.element('previewPlay').onclick();
   const visible = app.element('answers').children.map(button => button.textContent.split(' · ')[1]);
   app.element('speak').onclick();
   for (const tick of app.intervals.values()) tick();
@@ -53,6 +55,7 @@ test('class join requires a name before connecting', async () => {
   const app = fixture({ url: 'https://quiz.test/?join=1&room=room-1234567890123456#key=key-1234567890123456', Peer: class { constructor() { throw new Error('Must not connect without a name'); } } });
   app.element('nickname').value = '';
   await app.element('start').onclick();
+  if (!app.element('preview').classList.contains('hide')) await app.element('previewPlay').onclick();
   assert.match(app.element('status').textContent, /Namen oder Spitznamen/);
   assert.ok(app.element('quizSettings').classList.contains('hide'));
   assert.equal(app.element('nickname').required, true);
@@ -63,6 +66,7 @@ test('teacher UI lists named students and sends one shared quiz without addition
   const quiz = { topic: 'Test', questions: [{ q: 'Gemeinsame Frage', options: ['eins', 'zwei', 'drei', 'vier'], correct: 0, explanation: 'Darum.' }] };
   const teacher = fixture({ quiz, Peer });
   await teacher.element('classStart').onclick();
+  await teacher.element('previewClass').onclick();
   const url = teacher.element('classLink').href;
   assert.ok(url.includes('room='));
   assert.ok(!teacher.element('classDashboard').classList.contains('hide'));

@@ -114,11 +114,12 @@ test('50 questions retain shared pictures and the download works offline with on
     throw new Error('Unexpected request');
   };
   await teacher.element('classStart').onclick();
+  await teacher.element('previewClass').onclick();
   const guest = fixture({ url: teacher.element('classLink').href, Peer }); guest.element('nickname').value = 'Mia';
   guest.context.fetch = () => { throw new Error('The student must use the shared quiz and its picture metadata'); };
   await guest.element('start').onclick();
   assert.equal(guest.element('counter').textContent, 'Frage 1 von 50'); assert.equal(guest.element('picture').src, Images.proxyUrl(image)); assert.match(guest.element('pictureCredit').innerHTML, /Example Artist.*CC BY-SA/);
-  await teacher.element('downloadSetup').onclick();
+  await teacher.element('downloadQuiz').onclick();
   assert.equal(aiCalls, 1); assert.equal(pictureCalls, 1); assert.equal(binaryCalls, 1);
   const output = await teacher.blobs.get(teacher.downloads[0].href).text(), script = output.match(/<script>([\s\S]*?)<\/script>/)[1];
   assert.equal(output.split(png.toString('base64')).length-1, 1, 'Repeated pictures must only be embedded once in the HTML file');

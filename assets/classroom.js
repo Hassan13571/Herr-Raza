@@ -1,6 +1,7 @@
 (function (root) {
   'use strict';
   const VERSION = 1;
+  const Results = root.RazaResults || (typeof module === 'object' && module.exports ? require('./quiz-results') : null);
   const Images = root.RazaQuizImages || (typeof module === 'object' && module.exports ? require('./quiz-images') : null);
   const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{16,80}$/.test(value);
   const cleanName = value => typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 24) : '';
@@ -40,7 +41,7 @@
       this.options.onStatus?.('Klasse bereit. Die Lehrerseite bitte geöffnet lassen.');
       return peer.id;
     }
-    roster() { return [...this.members.values()].map(member => ({ ...member })); }
+    roster() { return [...this.members.values()].map(member => ({ ...member, ...(member.answers ? { answers: [...member.answers] } : {}) })); }
     changed() { this.options.onRoster?.(this.roster()); }
     accept(conn) {
       let memberId = null;
@@ -82,6 +83,10 @@
           member.progress = message.progress;
           if (message.type === 'finished' && message.progress === total && Number.isInteger(message.right) && message.right >= 0 && message.right <= total
             && Number.isInteger(message.score) && message.score >= 0 && message.score <= total * 250) {
+            if (message.answers !== undefined) {
+              if (!Results.validAnswers(this.quiz.questions, message.answers) || message.answers.filter((n, i) => n === this.quiz.questions[i].correct).length !== message.right) return;
+              member.answers = [...message.answers];
+            }
             member.finished = true; member.right = message.right; member.score = message.score;
           }
           this.changed();
@@ -136,7 +141,7 @@
     }
     send(message) { if (this.connected && this.connection?.open) this.connection.send({ v: VERSION, ...message }); }
     progress(progress) { if (this.finished) return; this.lastProgress = { type: 'progress', progress }; this.send(this.lastProgress); }
-    finish(progress, right, score) { if (this.finished) return; this.finished = true; this.lastProgress = { type: 'finished', progress, right, score }; this.send(this.lastProgress); }
+    finish(progress, right, score, answers) { if (this.finished) return; this.finished = true; this.lastProgress = { type: 'finished', progress, right, score, ...(answers ? { answers: [...answers] } : {}) }; this.send(this.lastProgress); }
     close() { this.closed = true; this.connection?.close(); this.peer?.destroy(); this.connected = false; }
   }
   function csv(roster) {

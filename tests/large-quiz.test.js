@@ -85,8 +85,9 @@ test('50-question quiz downloads completely, reaches the last answer and replays
   let requested;
   app.context.fetch = async (url, options) => { requested = JSON.parse(options.body); return { ok: true, json: async () => ({ topic: 'Großes Quiz', questions }) }; };
   await app.element('downloadSetup').onclick();
+  await app.element('previewDownload').onclick();
   assert.equal(requested.count, '50');
-  assert.equal(app.element('counter').textContent, 'Frage 1 von 50');
+  assert.equal(app.element('previewCount').textContent, '50 / 50 Fragen');
   const output = await app.blobs.get(app.downloads[0].href).text();
   const script = output.match(/<script>([\s\S]*?)<\/script>/)[1];
   const offline = { document: app.document, setTimeout() {}, clearTimeout() {} };
@@ -107,6 +108,7 @@ test('large legacy links preserve the requested count and partial results show t
   const app = fixture({ url: 'https://quiz.test/?join=1&topic=Test&count=50', quiz: { topic: 'Test', requestedCount: 50, questions, ai: { connected: true, modelName: 'Free' }, warning: 'Kostenloses Limit erreicht.' } });
   assert.equal(app.element('count').value, '50');
   await app.element('start').onclick();
+  if (!app.element('preview').classList.contains('hide')) await app.element('previewPlay').onclick();
   assert.match(app.element('generation').textContent, /5 von 50 gewünschten Fragen/);
   assert.match(app.element('generation').textContent, /Kostenloses Limit erreicht/);
 });
