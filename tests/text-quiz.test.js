@@ -2,11 +2,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const ai = require('../lib/free-ai');
+const { reviewing } = require('./review-fixture');
 const { fixture } = require('./browser-fixture');
 const { fakePeers } = require('./peer-fixture');
 
 const facts = [
-  'Die Sternwarte Morgenrot beobachtet das Licht entfernter Sterne.',
+  'Die Sternwarte Morgenrot verwendet wissenschaftliche Methoden und beobachtet das Licht entfernter Sterne.',
   'Ihr Spektrometer zerlegt das Licht in einzelne Wellenlängen.',
   'Zum Abschluss vergleicht das Team die Messwerte mit früheren Beobachtungen.'
 ];
@@ -16,7 +17,7 @@ function response() { return { headers: {}, setHeader(k, v) { this.headers[k] = 
 test('text API preserves the full source, verifies evidence and never fetches web grounding', async t => {
   const originalGenerate = ai.generateFreeText, originalFetch = global.fetch;
   let generate, calls = 0;
-  ai.generateFreeText = (...args) => { calls++; return generate(...args); };
+  ai.generateFreeText = (...args) => { calls++; return reviewing(generate)(...args); };
   delete require.cache[require.resolve('../api/quiz')];
   const handler = require('../api/quiz');
   global.fetch = async () => { throw new Error('Text quizzes must not search the web'); };
@@ -61,7 +62,7 @@ test('text API preserves the full source, verifies evidence and never fetches we
       await handler({ method: 'POST', body: { sourceText: facts.join(' '), count: 3 } }, res);
       assert.equal(res.statusCode, 502);
       assert.equal(res.body.ai, undefined);
-      assert.match(res.body.details, /KI hat gerade kein ausreichend belegtes Quiz/);
+      assert.match(res.body.details, /KI hat gerade kein ausreichend belegtes und geprüftes Quiz/);
       assert.doesNotMatch(res.body.details, /mehr Lerntext/);
     });
     await t.test('a provider outage does not blame a complete learning text', async () => {
@@ -85,7 +86,7 @@ test('text API preserves the full source, verifies evidence and never fetches we
       assert.equal(calls, before);
     });
     await t.test('safe topics containing the word Methoden are not mistaken for drugs', async () => {
-      global.fetch = async () => ({ ok: true, json: async () => ({ query: { pages: [{ title: 'Methoden', extract: facts.join(' ') }] } }) });
+      global.fetch = async () => ({ ok: true, json: async () => ({ query: { pages: [{ title: 'Wissenschaftliche Methoden', extract: facts.join(' ') }] } }) });
       generate = async () => ({ text: JSON.stringify({ questions: validQuestions() }), model: 'verified/free' });
       const res = response();
       await handler({ method: 'POST', body: { topic: 'Wissenschaftliche Methoden', count: 3 } }, res);

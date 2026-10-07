@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const ai = require('../lib/free-ai');
+const { reviewing } = require('./review-fixture');
 const { validQuiz } = require('../assets/classroom');
 const { fixture } = require('./browser-fixture');
 
@@ -13,12 +14,12 @@ function response() { return { headers: {}, setHeader(k, v) { this.headers[k] = 
 test('large text quizzes request complete output, keep evidence and remain bounded to 50', async t => {
   const originalGenerate = ai.generateFreeText, originalFetch = global.fetch;
   let generate;
-  ai.generateFreeText = (...args) => generate(...args);
+  ai.generateFreeText = (...args) => reviewing(generate)(...args);
   delete require.cache[require.resolve('../api/quiz')];
   const handler = require('../api/quiz');
   global.fetch = async () => { throw new Error('Own text must not search the web'); };
   try {
-    await t.test('one request produces 50 distinct questions including the last section', async () => {
+    await t.test('one generation produces 50 distinct questions and the complete set receives a review', async () => {
       let calls = 0;
       generate = async (prompt, options) => {
         calls++;

@@ -7,11 +7,12 @@ const { candidate, searchImages } = require('../lib/quiz-images');
 const { validQuiz } = require('../assets/classroom');
 const { fixture } = require('./browser-fixture');
 const { fakePeers } = require('./peer-fixture');
+const { reviewing } = require('./review-fixture');
 const image = { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Example.jpg/480px-Example.jpg', alt: 'plant cell', author: 'Example Artist', license: 'CC BY-SA 4.0', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Example.jpg', licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0/' };
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j8ioAAAAASUVORK5CYII=', 'base64');
 const question = n => ({ q: 'Frage ' + (n+1), options: ['eins','zwei','drei','vier'], correct: n%4, explanation: 'Erklärung', imageQuery: 'plant cell' });
 const response = () => ({ headers: {}, setHeader(k,v) { this.headers[k]=v; }, status(code) { this.statusCode=code; return this; }, json(body) { this.body=body; return this; }, send(body) { this.body=body; return this; }, end() { return this; } });
-function page(license = 'CC BY-SA 4.0') { return { ns: 6, imageinfo: [{ thumburl: image.url, thumbmime: 'image/jpeg', descriptionurl: image.sourceUrl, extmetadata: { LicenseShortName: { value: license }, LicenseUrl: { value: image.licenseUrl }, Artist: { value: '<a href="https://example.test">Example Artist</a>' } } }] }; }
+function page(license = 'CC BY-SA 4.0') { return { ns: 6, title: 'File:Plant cell example.jpg', imageinfo: [{ thumburl: image.url, thumbmime: 'image/jpeg', descriptionurl: image.sourceUrl, extmetadata: { LicenseShortName: { value: license }, LicenseUrl: { value: image.licenseUrl }, Artist: { value: '<a href="https://example.test">Example Artist</a>' } } }] }; }
 
 test('picture search keeps individual free licenses and plain creator attribution', async () => {
   assert.deepEqual(candidate(page(), 'plant cell'), image);
@@ -24,6 +25,7 @@ test('picture search keeps individual free licenses and plain creator attributio
   assert.match(publicDomain.licenseUrl, /publicdomain\/mark/);
   const current = page();
   current.imageinfo[0].thumburl = 'https://thumb.wikimedia.org/wikipedia/commons/thumb/9/93/Stromboli_Eruption.jpg/500px-Stromboli_Eruption.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail';
+  current.title = 'File:Volcanic eruption of Stromboli.jpg';
   const normalized = candidate(current, 'volcanic eruption');
   assert.equal(normalized.url, current.imageinfo[0].thumburl.split('?')[0]);
   assert.equal(normalized.url.includes('utm_'), false);
@@ -48,7 +50,7 @@ test('search bounds and throttling do not cause unbounded calls or break quiz ge
   let res = response(); await handler({ method: 'POST', body: { queries: Array(7).fill('plant cell') } }, res); assert.equal(res.statusCode, 400);
   res = response(); await handler({ method: 'POST', body: '{' }, res); assert.equal(res.statusCode, 400);
   assert.equal(Images.query('https://private.test'), '');
-  assert.equal(Images.questionQuery({ q: 'Was stimmt zu „Im Fall der Erde schmelzen Gesteine ab“?' }, 'Vulkane'), 'Vulkane');
+  assert.equal(Images.questionQuery({ q: 'Was stimmt zu „Im Fall der Erde schmelzen Gesteine ab“?' }, 'Vulkane'), '');
   const quiz = { topic: 'Test', questions: [question(0)] };
   const result = await Images.enrich(quiz, async () => { throw new Error('Search unavailable'); });
   assert.deepEqual(result.questions, quiz.questions);
@@ -86,12 +88,12 @@ test('image proxy allows bounded raster bytes and refuses redirects, SVG and ove
   } finally { global.fetch = originalFetch; }
 });
 
-test('optional picture queries keep text evidence and require no additional AI generation', async () => {
+test('optional picture queries keep text evidence and reuse the independent quality review', async () => {
   const ai = require('../lib/free-ai'), originalGenerate = ai.generateFreeText, originalFetch = global.fetch;
   const quotes = ['Die Pflanzenzelle besitzt eine feste Zellwand aus Zellulose.', 'Chloroplasten wandeln Lichtenergie in chemische Energie um.', 'Der Zellkern enthält die Erbinformationen einer Pflanzenzelle.'];
   try {
     let promptText = '', calls = 0;
-    ai.generateFreeText = async prompt => { promptText = prompt; calls++; return { text: JSON.stringify({ questions: quotes.map((quote,n) => ({ ...question(n), sourceIndex: 0, quote })) }), model: 'verified/free' }; };
+    ai.generateFreeText = reviewing(async prompt => { promptText = prompt; calls++; return { text: JSON.stringify({ questions: quotes.map((quote,n) => ({ ...question(n), sourceIndex: 0, quote })) }), model: 'verified/free' }; });
     global.fetch = () => { throw new Error('Learning texts must not fetch source material or pictures in the quiz request'); };
     delete require.cache[require.resolve('../api/quiz')]; const handler = require('../api/quiz');
     let res = response(); await handler({ method: 'POST', body: { sourceText: quotes.join(' '), count: 3, images: true } }, res);

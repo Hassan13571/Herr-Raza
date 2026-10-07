@@ -48,7 +48,8 @@
     // Only short generic concepts are sent to the picture search, never the learning text.
     if (Object.prototype.hasOwnProperty.call(question, 'imageQuery')) return query(question.imageQuery);
     const cue = query(question.q?.match(/„([^“]{2,60})“/)?.[1]);
-    return (topic === 'Quiz aus deinem Text' ? '' : query(topic)) || (cue.split(' ').length <= 3 ? cue : '');
+    // A broad topic picture can be unrelated to the individual question.
+    return cue && cue.split(' ').length <= 3 ? cue : '';
   }
   async function enrich(quiz, fetcher = root.fetch) {
     const terms = quiz.questions.map(q => questionQuery(q, quiz.topic));
