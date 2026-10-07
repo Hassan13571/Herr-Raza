@@ -27,10 +27,10 @@ function relayServer() {
   };
   return { fetch, EventSource, requests, listeners };
 }
-test('encrypted HTTPS relay joins two students, reuses the cached quiz and keeps names out of server messages', async () => {
+test('encrypted HTTPS relay shares all 50 questions with two students and keeps names out of server messages', async () => {
   const server = relayServer(), Peer = createTransport({ ...server, crypto: webcrypto });
   const host = new Host(Peer), first = new Guest(Peer), second = new Guest(Peer);
-  const quiz = { topic: 'Test', questions: Array.from({ length: 15 }, (_, i) => ({ q: 'Gemeinsame Frage ' + i + ' mit längerer Erklärung', options: ['eins', 'zwei', 'drei', 'vier'], correct: 0, explanation: 'Ein ausführlicher Erklärungstext. '.repeat(20) })) };
+  const quiz = { topic: 'Test', questions: Array.from({ length: 50 }, (_, i) => ({ q: 'Gemeinsame Frage ' + i + ' mit längerer Erklärung', options: ['eins', 'zwei', 'drei', 'vier'], correct: 0, explanation: 'Ein ausführlicher Erklärungstext. '.repeat(20) })) };
   const room = 'room-1234567890123456', key = 'key-1234567890123456';
   try {
     await host.open(quiz, { time: '0', shuffle: 'yes' }, key, room);
@@ -43,8 +43,10 @@ test('encrypted HTTPS relay joins two students, reuses the cached quiz and keeps
     first.progress(1); first.progress(2);
     await new Promise(resolve => setTimeout(resolve, 20));
     assert.equal(server.requests.length, before, 'Individual answers do not use the daily message allowance');
-    first.finish(15, 15, 2000);
+    first.finish(50, 50, 7300);
     for (let i = 0; i < 10 && !host.roster()[0].finished; i++) await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal(host.roster()[0].finished, true);
+    assert.equal(host.roster()[0].right, 50);
+    assert.equal(host.roster()[0].score, 7300);
   } finally { first.close(); second.close(); host.close(); }
 });

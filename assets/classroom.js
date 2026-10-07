@@ -5,7 +5,7 @@
   const cleanName = value => typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 24) : '';
   function validQuiz(quiz) {
     return quiz && typeof quiz.topic === 'string' && quiz.topic.length <= 100 && Array.isArray(quiz.questions)
-      && quiz.questions.length > 0 && quiz.questions.length <= 15 && quiz.questions.every(q =>
+      && quiz.questions.length > 0 && quiz.questions.length <= 50 && quiz.questions.every(q =>
         q && typeof q.q === 'string' && q.q.length <= 4000 && Array.isArray(q.options) && q.options.length === 4
         && q.options.every(o => typeof o === 'string' && o.length <= 2000)
         && Number.isInteger(q.correct) && q.correct >= 0 && q.correct < 4 && typeof q.explanation === 'string');

@@ -24,7 +24,7 @@
 <div class="field"><label for="topic">Thema <span class="small">(bei eigenem Text optional)</span></label><input id="topic" maxlength="100" placeholder="z. B. Photosynthese, Napoleon, Vulkane"></div>
 <div class="field"><label for="sourceText">Eigener Text <span class="small">(optional)</span></label><textarea id="sourceText" rows="6" placeholder="Füge deinen Lerntext hier ein. Die Quizfragen werden aus deinem Text erstellt." aria-describedby="textHint textCount"></textarea><div class="text-meta"><p id="textHint" class="small">Für ein Themenquiz frei lassen.</p><p id="textCount" class="small" role="status" aria-live="polite">0 / 60.000 Zeichen</p></div></div>
 <div class="two">
-<div class="field"><label>Fragen</label><select id="count"><option>5</option><option selected>10</option><option>15</option></select></div>
+<div class="field"><label>Fragen</label><select id="count"><option>5</option><option selected>10</option><option>15</option><option>20</option><option>25</option><option>30</option><option>35</option><option>40</option><option>45</option><option>50</option></select></div>
 <div class="field"><label>Schwierigkeit</label><select id="difficulty"><option value="easy">Einfach</option><option value="medium" selected>Mittel</option><option value="hard">Schwer</option><option value="expert">Sehr schwer</option></select></div>
 </div>
 <div class="field"><label>Wissensmodus</label><select id="mode"><option value="school" selected>Schulwissen – zuverlässige Quellen</option><option value="live">Aktuell – Internet & Echtzeit-Infos</option></select></div>
@@ -51,8 +51,9 @@ let displayedAnswers=[],lastQuiz=null,lastQuizKey='',host=null,guest=null,roomPa
 const reader=RazaSpeech.createReader({onState:(playing,label)=>{$('speak').textContent=playing?'⏹ Vorlesen stoppen':'🔊 Vorlesen';$('speechStatus').textContent=playing?'Vorlesen: '+label+' · Der Timer pausiert.':''},onError:message=>{$('speechStatus').textContent=message}});
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function show(id){reader.stop();['setup','quiz','done'].forEach(x=>$(x).classList.toggle('hide',x!==id));scrollTo(0,0)}
-async function loadQuiz(topic,count,difficulty,mode,sourceText){const r=await fetch('/api/quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic,count,difficulty,mode,sourceText}),signal:AbortSignal.timeout(58000)});const d=await r.json();if(!r.ok)throw new Error(d.details||d.error||'Serverfehler');return d}
-function generationLabel(d){if(!d.ai?.connected)return 'ℹ Quellenquiz ohne KI. '+(d.warning||'Die KI ist gerade nicht verfügbar.');const name=d.ai.modelName||'Kostenloses KI-Modell';return d.fallbackUsed?'✨ Erstellt mit '+name+': '+d.aiQuestionCount+' KI-Fragen, ergänzt durch '+(d.questions.length-d.aiQuestionCount)+' Quellenfragen.':'✨ Erstellt mit echter KI: '+name+' · Tokenpreis 0 €.'}
+async function loadQuiz(topic,count,difficulty,mode,sourceText){const r=await fetch('/api/quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic,count,difficulty,mode,sourceText}),signal:AbortSignal.timeout(Number(count)>15?178000:58000)});const d=await r.json();if(!r.ok)throw new Error(d.details||d.error||'Serverfehler');return d}
+function generationLabel(d){let label;if(!d.ai?.connected)label='ℹ Quellenquiz ohne KI. '+(d.warning||'Die KI ist gerade nicht verfügbar.');else{const name=d.ai.modelName||'Kostenloses KI-Modell';label=d.fallbackUsed?'✨ Erstellt mit '+name+': '+d.aiQuestionCount+' KI-Fragen, ergänzt durch '+(d.questions.length-d.aiQuestionCount)+' Quellenfragen.':'✨ Erstellt mit echter KI: '+name+' · Tokenpreis 0 €.';if(d.warning)label+=' '+d.warning}if(d.requestedCount>d.questions.length)label+=' '+d.questions.length+' von '+d.requestedCount+' gewünschten Fragen erstellt.';return label}
+function creatingLabel(){const count=Number($('count').value);return count>15?count+' Fragen werden in mehreren Schritten erstellt. Das kann bis zu drei Minuten dauern …':'Dein Quiz wird erstellt …'}
 function quizKey(){return JSON.stringify([$('topic').value.trim(),$('sourceText').value.trim(),$('count').value,$('difficulty').value,$('mode').value])}
 function updateSourceInput(){const length=$('sourceText').value.length,hasText=!!$('sourceText').value.trim();$('textCount').textContent=length.toLocaleString('de-DE')+' / 60.000 Zeichen';$('textCount').classList.toggle('text-limit',length>60000);$('mode').disabled=hasText||busy||!!(host&&!host.closed);$('modeNote').textContent=hasText?'Die Fragen und Begründungen beziehen sich ausschließlich auf deinen Text.':($('mode').value==='live'?'Der Server sucht nach aktuellen Web-Informationen.':'Die KI erstellt Fragen aus zuverlässigen Hintergrundquellen.')}
 function setBusy(value){busy=value;['start','downloadSetup','classStart'].forEach(id=>$(id).disabled=busy);$('quizSettings').querySelectorAll('input,select,textarea').forEach(e=>e.disabled=busy||!!(host&&!host.closed));updateSourceInput()}
@@ -61,7 +62,7 @@ async function ownQuiz(){const sourceText=$('sourceText').value.trim(),topic=$('
 async function start({download=false}={}){
  if($('start').disabled)return;
  if(roomParams&&!$('nickname').value.trim()){$('status').textContent='Bitte deinen Namen oder Spitznamen eingeben, damit die Lehrkraft deinen Beitritt erkennt.';$('nickname').focus();return}
- setBusy(true);$('status').textContent=roomParams?'Dein Beitritt wird bestätigt …':'Dein Quiz wird erstellt …';
+ setBusy(true);$('status').textContent=roomParams?'Dein Beitritt wird bestätigt …':creatingLabel();
  try{let d;if(roomParams){const joined=await connectGuest();applySettings(joined.settings);d=joined.quiz}else d=await ownQuiz();rememberQuiz(d,d.topic||$('topic').value.trim());show('quiz');render();if(download)downloadCurrentQuiz();$('status').textContent='Quiz bereit.'}catch(e){$('status').textContent='Fehler: '+(e.name==='TimeoutError'?'Der Server hat zu lange gebraucht.':e.message)+' — bitte noch einmal versuchen.'}finally{setBusy(false)}
 }
 function sourceHTML(q){const label=esc(q.source||'Quelle');if(q.sourceUrl&&/^https?:\/\//.test(q.sourceUrl))return '<a href="'+esc(q.sourceUrl)+'" target="_blank" rel="noopener">'+label+' ↗</a>';return label}
@@ -79,7 +80,7 @@ function classUrl(){
 async function classStart(){
  if(host&&!host.closed){showClass();return}
  if(!$('topic').value.trim()&&!$('sourceText').value.trim()){$('status').textContent='Bitte zuerst ein Thema oder einen eigenen Text eingeben.';return}
- setBusy(true);$('status').textContent='Ein gemeinsames Quiz für deine Klasse wird erstellt …';
+ setBusy(true);$('status').textContent='Ein gemeinsames Quiz für deine Klasse wird erstellt. '+creatingLabel();
  try{const d=await ownQuiz();rememberQuiz(d,d.topic);host=new RazaClassroom.Host(window.RazaRelay.Peer,{onRoster:renderRoster,onStatus:message=>{$('classStatus').textContent=message}});await host.open(lastQuiz,{time:$('timeLimit').value,shuffle:$('shuffle').value},newId(),newId());classLink=classUrl();$('qr').replaceChildren();if(typeof QRCode==='function')new QRCode($('qr'),{text:classLink,width:220,height:220,correctLevel:QRCode.CorrectLevel.M});else $('classStatus').textContent='QR-Code nicht geladen. Bitte den Beitrittslink kopieren.';$('joincode').textContent=currentTopic;$('classLink').href=classLink;$('classLink').textContent=classLink;$('classDashboard').classList.remove('hide');$('classbox').classList.remove('hide');$('closeClass').disabled=false;['showParticipants','quizParticipants'].forEach(id=>$(id).classList.remove('hide'));$('classStart').textContent='👥 Teilnehmerliste anzeigen';$('quizSettings').querySelectorAll('input,select,textarea').forEach(e=>e.disabled=true);renderRoster([]);$('status').textContent='Klasse bereit. QR-Code teilen und Lehrerseite geöffnet lassen.';showClass()}catch(e){host?.close();host=null;$('status').textContent='Klassenmodus: '+e.message}finally{setBusy(false)}
 }
 function newId(){if(crypto.randomUUID)return crypto.randomUUID();return Array.from(crypto.getRandomValues(new Uint8Array(24)),b=>b.toString(16).padStart(2,'0')).join('')}
@@ -96,7 +97,7 @@ function joinFromLink(){
  if(room&&key){roomParams={room,key};$('setupTitle').textContent='Deiner Klasse beitreten';$('quizSettings').classList.add('hide');$('nameOptional').textContent='(für den Beitritt erforderlich)';$('nickname').required=true;$('joinHint').classList.remove('hide');$('start').textContent='Mit Namen beitreten';['classStart','downloadSetup'].forEach(id=>$(id).classList.add('hide'));$('status').textContent='Namen eingeben und beitreten. Die Lehrerseite muss geöffnet bleiben.';return}
  const topic=(p.get('topic')||'').slice(0,100);if(!topic)return;
  $('topic').value=topic;
- if(['5','10','15'].includes(p.get('count'))) $('count').value=p.get('count');
+ if(['5','10','15','20','25','30','35','40','45','50'].includes(p.get('count'))) $('count').value=p.get('count');
  if(['0','15','30','60'].includes(p.get('time'))) $('timeLimit').value=p.get('time');if(['yes','no'].includes(p.get('shuffle'))) $('shuffle').value=p.get('shuffle');if(['easy','medium','hard','expert'].includes(p.get('difficulty'))) $('difficulty').value=p.get('difficulty');
  if(['school','live'].includes(p.get('mode'))) $('mode').value=p.get('mode');
  $('classStart').classList.add('hide');

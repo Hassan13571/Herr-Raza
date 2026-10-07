@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/quiz.js": { "maxDuration": 60 },
+    "api/quiz.js": { "maxDuration": 180 },
     "api/ai-status.js": { "maxDuration": 60 }
   },
   "headers": [
