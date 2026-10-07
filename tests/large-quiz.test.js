@@ -109,6 +109,6 @@ test('large legacy links preserve the requested count and partial results show t
   assert.equal(app.element('count').value, '50');
   await app.element('start').onclick();
   if (!app.element('preview').classList.contains('hide')) await app.element('previewPlay').onclick();
-  assert.match(app.element('generation').textContent, /5 von 50 gewünschten Fragen/);
+  assert.match(app.element('generation').textContent, /5 von 50 Fragen sind fertig/);
   assert.match(app.element('generation').textContent, /Kostenloses Limit erreicht/);
 });

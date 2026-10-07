@@ -24,7 +24,7 @@ test('backup imports complete quizzes and rejects malformed answers, active link
   const roundtrip = parseBackup(backup(quiz, { time: '60', shuffle: 'no' }));
   assert.deepEqual(roundtrip.quiz.questions, quiz.questions); assert.equal(roundtrip.settings.time, '60');
   assert.equal(roundtrip.quiz.edited, true); assert.equal(roundtrip.quiz.quality.reviewed, false);
-  assert.throws(() => parseBackup('{"questions":[]}'), /keine Herr-Raza/);
+  assert.throws(() => parseBackup('{"questions":[]}'), /nicht zu einem gespeicherten Herr-Raza/);
   assert.throws(() => normalizeQuiz({ ...quiz, questions: [{ ...quiz.questions[0], options: ['A', 'a', 'B', 'C'] }] }), /verschiedene Antworten/);
   assert.throws(() => normalizeQuiz({ ...quiz, questions: [{ ...quiz.questions[0], correct: 4 }] }), /Frage 1/);
   assert.equal(normalizeQuiz({ ...quiz, questions: [{ ...quiz.questions[0], sourceUrl: 'javascript:alert(1)' }] }).questions[0].sourceUrl, undefined);
@@ -45,7 +45,7 @@ test('preview precedes play and edited answers determine results, remove obsolet
 });
 test('invalid editor contents cannot start or save; add, reorder and remove preserve the other edits', async () => {
   const app = fixture({ quiz }); await app.element('start').onclick(); app.element('edit-option-0-0').value = '';
-  await app.element('previewPlay').onclick(); assert.match(app.element('previewStatus').textContent, /vollständig/); assert.equal(app.element('quiz').classList.contains('hide'), true);
+  await app.element('previewPlay').onclick(); assert.match(app.element('previewStatus').textContent, /Fülle alle Felder aus/); assert.equal(app.element('quiz').classList.contains('hide'), true);
   app.element('edit-option-0-0').value = 'geändert'; app.element('addQuestion').onclick(); assert.equal(app.element('previewCount').textContent, '2 / 50 Fragen');
   app.element('editorQuestions').children[1].children.at(-1).children[0].onclick(); assert.equal(app.element('edit-option-1-0').value, 'geändert');
   app.element('editorQuestions').children[0].children.at(-1).children[2].onclick(); assert.equal(app.element('edit-option-0-0').value, 'geändert');

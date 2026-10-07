@@ -14,19 +14,19 @@
         && (!q.image || !!Images?.normalizeImage(q.image) && !Object.prototype.hasOwnProperty.call(q.image, 'data')));
   }
   function connectionError(error) {
-    if (error?.type === 'peer-unavailable') return 'Die Lehrerseite ist nicht erreichbar. Sie muss geöffnet bleiben. Bitte erneut verbinden.';
-    if (error?.type === 'browser-incompatible') return 'Dieser Browser unterstützt den Live-Klassenmodus nicht. Bitte Chrome, Firefox oder Safari verwenden.';
-    return 'Die Live-Verbindung ist unterbrochen. Bitte Internetzugang prüfen und erneut verbinden.';
+    if (error?.type === 'peer-unavailable') return 'Die Seite deiner Lehrkraft ist nicht erreichbar. Sie muss geöffnet bleiben. Tippe auf „Noch einmal verbinden“.';
+    if (error?.type === 'browser-incompatible') return 'Dieser Browser kann das Quiz für die Klasse nicht öffnen. Bitte nutze Chrome, Firefox oder Safari.';
+    return 'Die Verbindung ist weg. Prüfe dein Internet. Tippe auf „Noch einmal verbinden“.';
   }
   function openPeer(Peer, id, onStatus, relay) {
-    if (typeof Peer !== 'function') throw new Error('Die Klassenverbindung konnte nicht geladen werden. Bitte die Seite neu laden.');
+    if (typeof Peer !== 'function') throw new Error('Die Klasse konnte nicht geöffnet werden. Bitte lade die Seite neu.');
     const peer = id ? new Peer(id, { debug: 0, relay }) : new Peer({ debug: 0, relay });
     const opened = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { peer.destroy(); reject(new Error('Die Klassenverbindung antwortet nicht. Bitte erneut versuchen.')); }, 12000);
+      const timer = setTimeout(() => { peer.destroy(); reject(new Error('Die Verbindung braucht zu lange. Bitte versuche es noch einmal.')); }, 12000);
       peer.on('open', () => { clearTimeout(timer); resolve(peer); });
       peer.on('error', error => { clearTimeout(timer); const message = error?.message || connectionError(error); reject(new Error(message)); onStatus?.(message); });
     });
-    peer.on('disconnected', () => { onStatus?.('Die Verbindung wird wiederhergestellt …'); if (!peer.destroyed) peer.reconnect(); });
+    peer.on('disconnected', () => { onStatus?.('Die App versucht, die Verbindung wieder zu öffnen …'); if (!peer.destroyed) peer.reconnect(); });
     return { peer, opened };
   }
   class Host {
@@ -38,7 +38,7 @@
       this.peer = peer;
       peer.on('connection', conn => this.accept(conn));
       await opened;
-      this.options.onStatus?.('Klasse bereit. Die Lehrerseite bitte geöffnet lassen.');
+      this.options.onStatus?.('Das Quiz für die Klasse ist bereit. Lass diese Seite geöffnet.');
       return peer.id;
     }
     roster() { return [...this.members.values()].map(member => ({ ...member, ...(member.answers ? { answers: [...member.answers] } : {}) })); }
@@ -62,7 +62,7 @@
           const name = cleanName(message.name);
           if (message.key !== this.key || !validId(message.id) || !name || (!this.members.has(message.id) && this.members.size >= 100)) {
             clearTimeout(timer);
-            conn.send({ v: VERSION, type: 'rejected', error: 'Beitritt nicht möglich. Bitte den aktuellen QR-Code scannen und einen Namen eingeben.' });
+            conn.send({ v: VERSION, type: 'rejected', error: 'Du kannst gerade nicht beitreten. Scanne den neuen QR-Code und gib deinen Namen ein.' });
             setTimeout(() => conn.close(), 200); return;
           }
           clearTimeout(timer);
@@ -104,13 +104,13 @@
       this.connections.clear();
       for (const member of this.members.values()) member.connected = false;
       this.changed();
-      this.options.onStatus?.('Klasse beendet. Die Teilnehmerliste kannst du weiterhin speichern.');
+      this.options.onStatus?.('Das Quiz für die Klasse ist beendet. Du kannst die Namen und Ergebnisse noch speichern.');
     }
   }
   class Guest {
     constructor(Peer, options = {}) { this.Peer = Peer; this.options = options; this.connected = false; this.closed = false; this.finished = false; this.lastProgress = null; }
     async join({ room, key, name, id }) {
-      if (!validId(room) || !validId(key) || !validId(id) || !cleanName(name)) throw new Error('Bitte einen Namen eingeben und den aktuellen Klassenlink verwenden.');
+      if (!validId(room) || !validId(key) || !validId(id) || !cleanName(name)) throw new Error('Gib deinen Namen ein. Nutze den neuen Link für deine Klasse.');
       this.closed = false;
       this.connection?.close();
       if (this.peer) this.peer.destroy();
@@ -121,7 +121,7 @@
         let accepted = false;
         const conn = peer.connect(room, { reliable: true, serialization: 'json' });
         this.connection = conn;
-        const timer = setTimeout(() => { conn.close(); reject(new Error('Kein Beitritt bestätigt. Die Lehrerseite muss geöffnet bleiben. Bitte erneut versuchen.')); }, 15000);
+        const timer = setTimeout(() => { conn.close(); reject(new Error('Der Beitritt hat nicht geklappt. Die Seite der Lehrkraft muss offen bleiben. Bitte versuche es noch einmal.')); }, 15000);
         const failed = message => { clearTimeout(timer); this.connected = false; this.options.onStatus?.(message, false); if (!accepted) reject(new Error(message)); };
         peer.on('error', error => failed(connectionError(error)));
         conn.on('open', () => conn.send({ v: VERSION, type: 'join', key, name: cleanName(name), id }));
@@ -129,13 +129,13 @@
           if (!message || message.v !== VERSION) return;
           if (message.type === 'accepted' && validQuiz(message.quiz)) {
             clearTimeout(timer); accepted = true; this.connected = true;
-            this.options.onStatus?.('Beigetreten als ' + cleanName(name) + '. Deine Lehrkraft sieht dich in der Teilnehmerliste.', true);
+            this.options.onStatus?.('Du bist dabei als ' + cleanName(name) + '. Deine Lehrkraft sieht deinen Namen.', true);
             if (this.lastProgress) this.send(this.lastProgress);
             resolve({ quiz: message.quiz, settings: message.settings || {} });
-          } else if (message.type === 'rejected') { failed(message.error || 'Beitritt abgelehnt.'); conn.close(); }
-          else if (message.type === 'closed') { this.closed = true; failed('Die Lehrkraft hat die Klasse beendet. Dein geladenes Quiz bleibt spielbar.'); }
+          } else if (message.type === 'rejected') { failed(message.error || 'Du kannst gerade nicht beitreten.'); conn.close(); }
+          else if (message.type === 'closed') { this.closed = true; failed('Deine Lehrkraft hat das Quiz für die Klasse beendet. Du kannst dein geladenes Quiz noch spielen.'); }
         });
-        conn.on('close', () => failed(this.closed ? 'Die Klasse ist beendet.' : 'Verbindung zur Lehrkraft unterbrochen. Bitte auf „Erneut verbinden“ tippen.'));
+        conn.on('close', () => failed(this.closed ? 'Die Klasse ist beendet.' : 'Die Verbindung zur Lehrkraft ist weg. Tippe auf „Noch einmal verbinden“.'));
         conn.on('error', error => failed(connectionError(error)));
       });
     }

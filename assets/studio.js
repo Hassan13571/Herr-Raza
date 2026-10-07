@@ -5,11 +5,11 @@
   const clone = value => JSON.parse(JSON.stringify(value));
   const text = (value, max) => typeof value === 'string' && value.trim() && value.length <= max;
   function normalizeQuiz(input) {
-    if (!input || !text(input.topic, 100) || !Array.isArray(input.questions) || !input.questions.length || input.questions.length > 50) throw new Error('Ein Quiz braucht einen Titel und 1 bis 50 Fragen.');
+    if (!input || !text(input.topic, 100) || !Array.isArray(input.questions) || !input.questions.length || input.questions.length > 50) throw new Error('Gib deinem Quiz einen Namen. Es braucht 1 bis 50 Fragen.');
     const questions = input.questions.map((q, i) => {
       if (!q || !text(q.q, 4000) || !Array.isArray(q.options) || q.options.length !== 4 || !q.options.every(o => text(o, 2000))
         || new Set(q.options.map(o => o.trim().toLocaleLowerCase('de-DE'))).size !== 4
-        || !Number.isInteger(q.correct) || q.correct < 0 || q.correct > 3 || !text(q.explanation, 6000)) throw new Error('Frage ' + (i + 1) + ': Frage, vier verschiedene Antworten, richtige Antwort und Erklärung vollständig ausfüllen.');
+        || !Number.isInteger(q.correct) || q.correct < 0 || q.correct > 3 || !text(q.explanation, 6000)) throw new Error('Frage ' + (i + 1) + ': Fülle alle Felder aus. Schreibe vier verschiedene Antworten. Wähle die richtige Antwort. Schreibe auch eine Erklärung.');
       const out = { q: q.q.trim(), options: q.options.map(o => o.trim()), correct: q.correct, explanation: q.explanation.trim() };
       for (const [key, max] of Object.entries({ source: 300, sourceUrl: 2000, sourceQuote: 420, imageQuery: 200 })) if (typeof q[key] === 'string' && q[key].length <= max) {
         if (key !== 'sourceUrl' || /^https?:\/\//.test(q[key])) out[key] = q[key];
@@ -29,30 +29,30 @@
   function normalizeSettings(settings = {}) { return { time: ['0', '15', '30', '60'].includes(String(settings.time)) ? String(settings.time) : '0', shuffle: settings.shuffle === 'no' ? 'no' : 'yes' }; }
   function parseBackup(raw) {
     if (typeof raw !== 'string' || raw.length > 1500000) throw new Error('Die Quiz-Datei ist zu groß (höchstens 1,5 MB).');
-    let input; try { input = JSON.parse(raw); } catch { throw new Error('Bitte eine gültige Quiz-JSON-Datei auswählen.'); }
-    if (input?.format !== 'herr-raza-quiz' || input.version !== 1) throw new Error('Diese Datei ist keine Herr-Raza-Quiz-Sicherung.');
+    let input; try { input = JSON.parse(raw); } catch { throw new Error('Die Datei konnte nicht gelesen werden. Bitte wähle eine gespeicherte Quiz-Datei (.json).'); }
+    if (input?.format !== 'herr-raza-quiz' || input.version !== 1) throw new Error('Diese Datei gehört nicht zu einem gespeicherten Herr-Raza-Quiz.');
     return { quiz: normalizeQuiz({ ...input.quiz, edited: true }), settings: normalizeSettings(input.settings) };
   }
   function backup(quiz, settings) { return JSON.stringify({ format: 'herr-raza-quiz', version: 1, quiz: normalizeQuiz(quiz), settings: normalizeSettings(settings) }, null, 2); }
   class Collection {
     constructor(storage, idFactory = () => root.crypto.randomUUID()) { this.storage = storage; this.idFactory = idFactory; }
     read() {
-      let raw; try { raw = this.storage.getItem(KEY); } catch { throw new Error('Der Browser erlaubt hier keinen Speicher. Nutze die JSON-Sicherung.'); }
+      let raw; try { raw = this.storage.getItem(KEY); } catch { throw new Error('Hier kannst du das Quiz nicht auf dem Gerät speichern. Tippe auf „Kopie speichern“.'); }
       if (!raw) return [];
       try {
         const data = JSON.parse(raw); if (data.version !== 1 || !Array.isArray(data.entries) || data.entries.length > 200) throw new Error();
         return data.entries.map(entry => { if (!text(entry.id, 100) || !text(entry.updatedAt, 40)) throw new Error(); return { id: entry.id, updatedAt: entry.updatedAt, archived: entry.archived === true, quiz: normalizeQuiz(entry.quiz), settings: normalizeSettings(entry.settings) }; });
-      } catch { throw new Error('Die gespeicherte Sammlung kann nicht gelesen werden. Deine Daten wurden nicht überschrieben.'); }
+      } catch { throw new Error('Deine gespeicherten Quizze können gerade nicht gelesen werden. Sie wurden nicht überschrieben.'); }
     }
     write(entries) {
       const raw = JSON.stringify({ version: 1, entries });
-      if (new TextEncoder().encode(raw).length > MAX_BYTES) throw new Error('Der Gerätespeicher für Quizze ist voll. Sichere dein Quiz als JSON.');
-      try { this.storage.setItem(KEY, raw); } catch { throw new Error('Speichern nicht möglich: Der Gerätespeicher ist voll oder gesperrt. Nutze die JSON-Sicherung.'); }
+      if (new TextEncoder().encode(raw).length > MAX_BYTES) throw new Error('Auf diesem Gerät ist kein Platz mehr. Tippe auf „Kopie speichern“.');
+      try { this.storage.setItem(KEY, raw); } catch { throw new Error('Speichern geht gerade nicht. Der Speicher ist voll oder gesperrt. Tippe auf „Kopie speichern“.'); }
     }
     save(quiz, settings, id) {
       const entries = this.read(), entry = { id: id || this.idFactory(), quiz: normalizeQuiz(quiz), settings: normalizeSettings(settings), archived: false, updatedAt: new Date().toISOString() };
       const index = entries.findIndex(e => e.id === entry.id);
-      if (index < 0) { if (entries.length >= 200) throw new Error('Die Sammlung enthält bereits 200 Quizze. Nutze die JSON-Sicherung.'); entries.push(entry); } else entries[index] = entry;
+      if (index < 0) { if (entries.length >= 200) throw new Error('Du hast schon 200 Quizze gespeichert. Tippe auf „Kopie speichern“.'); entries.push(entry); } else entries[index] = entry;
       this.write(entries); return clone(entry);
     }
     archive(id, value) { const entries = this.read(), entry = entries.find(e => e.id === id); if (!entry) throw new Error('Quiz nicht gefunden.'); entry.archived = value; this.write(entries); }
@@ -69,7 +69,7 @@
         const q = { ...original, q: $('edit-q-' + index).value, options: [0, 1, 2, 3].map(n => $('edit-option-' + index + '-' + n).value), explanation: $('edit-explanation-' + index).value,
           correct: [0, 1, 2, 3].find(n => $('edit-correct-' + index + '-' + n).checked) };
         const changed = q.q !== original.q || q.explanation !== original.explanation || q.correct !== original.correct || q.options.some((o, n) => o !== original.options[n]);
-        if (changed) { q.source = 'Manuell bearbeitet'; delete q.sourceUrl; delete q.sourceQuote; delete q.sourceIndex; delete q.imageQuery; q.explanation = q.explanation.replace(/\s*Textstelle:\s*[„"].*$/s, '').trim(); }
+        if (changed) { q.source = 'Von dir geändert'; delete q.sourceUrl; delete q.sourceQuote; delete q.sourceIndex; delete q.imageQuery; q.explanation = q.explanation.replace(/\s*Textstelle:\s*[„"].*$/s, '').trim(); }
         if (original.image && !$('edit-image-' + index).checked) delete q.image;
         return { q, changed };
       });
@@ -107,7 +107,7 @@
       $('previewDownload').className = 'btn ' + (intent === 'download' ? 'primary' : 'secondary');
     }
     function open(quiz, { id = null, settings, purpose = 'play' } = {}) {
-      if (isClassActive?.()) throw new Error('Beende zuerst die laufende Klasse, bevor du ein Quiz bearbeitest.');
+      if (isClassActive?.()) throw new Error('Bitte beende zuerst das Quiz für die Klasse. Danach kannst du Fragen ändern.');
       draft = clone(quiz); entryId = id; intent = purpose; if (settings) onOpen?.(normalizeSettings(settings)); else onOpen?.(); status(''); renderEditor();
     }
     function renderCollection() {
@@ -115,14 +115,14 @@
       try { entries = collection.read(); $('libraryStatus').textContent = ''; } catch (e) { $('libraryStatus').textContent = e.message; return; }
       const query = $('librarySearch').value.trim().toLocaleLowerCase('de-DE');
       const shown = entries.filter(e => e.archived === archived && e.quiz.topic.toLocaleLowerCase('de-DE').includes(query)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      $('libraryEmpty').textContent = shown.length ? '' : archived ? 'Keine archivierten Quizze.' : 'Noch keine passenden Quizze gespeichert.';
+      $('libraryEmpty').textContent = shown.length ? '' : archived ? 'Du hast keine Quizze weggelegt.' : 'Hier ist noch kein passendes Quiz.';
       shown.forEach(entry => {
         const li = node('li'); li.appendChild(node('strong', entry.quiz.topic)); li.appendChild(node('div', entry.quiz.questions.length + ' Fragen · ' + new Date(entry.updatedAt).toLocaleDateString('de-DE'), 'small'));
-        const tools = node('div', undefined, 'tools'); tools.appendChild(button('Öffnen & bearbeiten', () => { try { open(entry.quiz, { id: entry.id, settings: entry.settings }); } catch (e) { $('libraryStatus').textContent = e.message; } }));
-        tools.appendChild(button(archived ? 'Wiederherstellen' : 'Archivieren', () => { try { collection.archive(entry.id, !archived); renderCollection(); } catch (e) { $('libraryStatus').textContent = e.message; } })); li.appendChild(tools); $('libraryList').appendChild(li);
+        const tools = node('div', undefined, 'tools'); tools.appendChild(button('Öffnen und ändern', () => { try { open(entry.quiz, { id: entry.id, settings: entry.settings }); } catch (e) { $('libraryStatus').textContent = e.message; } }));
+        tools.appendChild(button(archived ? 'Zurückholen' : 'Weglegen', () => { try { collection.archive(entry.id, !archived); renderCollection(); } catch (e) { $('libraryStatus').textContent = e.message; } })); li.appendChild(tools); $('libraryList').appendChild(li);
       });
     }
-    function downloadJSON() { const quiz = validated(), blob = new root.Blob([backup(quiz, getSettings())], { type: 'application/json' }), url = root.URL.createObjectURL(blob), a = node('a'); a.href = url; a.download = quiz.topic.replace(/[^a-z0-9äöüß_-]+/gi, '-').slice(0, 100) + '.quiz.json'; doc.body.appendChild(a); a.click(); a.remove(); root.setTimeout(() => root.URL.revokeObjectURL(url), 60000); status('JSON-Sicherung erstellt. Du kannst sie über „Quiz importieren“ wieder öffnen.'); }
+    function downloadJSON() { const quiz = validated(), blob = new root.Blob([backup(quiz, getSettings())], { type: 'application/json' }), url = root.URL.createObjectURL(blob), a = node('a'); a.href = url; a.download = quiz.topic.replace(/[^a-z0-9äöüß_-]+/gi, '-').slice(0, 100) + '.quiz.json'; doc.body.appendChild(a); a.click(); a.remove(); root.setTimeout(() => root.URL.revokeObjectURL(url), 60000); status('Deine Kopie ist fertig. Auf der Startseite kannst du sie wieder laden.'); }
     $('previewPlay').onclick = guarded(() => onPlay(validated()));
     $('previewClass').onclick = guarded(() => onClass(validated()));
     $('previewDownload').onclick = guarded(() => onDownload(validated()));
@@ -131,9 +131,9 @@
     $('previewBack').onclick = () => { sync(); onBack(); renderCollection(); };
     $('addQuestion').onclick = () => { if (draft.questions.length >= 50) return; sync(); draft.questions.push({ q: '', options: ['', '', '', ''], correct: 0, explanation: '' }); draft.edited = true; renderEditor(draft.questions.length - 1); };
     $('librarySearch').addEventListener('input', renderCollection);
-    $('libraryArchive').onclick = () => { archived = !archived; $('libraryArchive').textContent = archived ? 'Aktive Quizze zeigen' : 'Archiv zeigen'; renderCollection(); };
+    $('libraryArchive').onclick = () => { archived = !archived; $('libraryArchive').textContent = archived ? 'Meine Quizze zeigen' : 'Weggelegte Quizze zeigen'; renderCollection(); };
     $('importQuiz').onclick = () => $('quizFile').click();
-    $('quizFile').onchange = async () => { try { const file = $('quizFile').files?.[0]; if (!file) return; if (file.size > 1500000) throw new Error('Die Quiz-Datei ist zu groß (höchstens 1,5 MB).'); const data = parseBackup(await file.text()); open(data.quiz, { settings: data.settings }); status('Quiz importiert. Prüfe die Fragen und speichere es bei Bedarf.'); } catch (e) { $('libraryStatus').textContent = e.message; } finally { $('quizFile').value = ''; } };
+    $('quizFile').onchange = async () => { try { const file = $('quizFile').files?.[0]; if (!file) return; if (file.size > 1500000) throw new Error('Die Quiz-Datei ist zu groß (höchstens 1,5 MB).'); const data = parseBackup(await file.text()); open(data.quiz, { settings: data.settings }); status('Dein Quiz ist geladen. Prüfe die Fragen. Danach kannst du es speichern.'); } catch (e) { $('libraryStatus').textContent = e.message; } finally { $('quizFile').value = ''; } };
     renderCollection();
     return { open, reopen: () => { if (draft) open(values(), { id: entryId }); }, renderCollection, manual: () => open({ topic: 'Mein eigenes Quiz', edited: true, questions: [{ q: '', options: ['', '', '', ''], correct: 0, explanation: '' }] }), validated };
   }

@@ -21,7 +21,7 @@
   }
   function renderIndividual(container, questions, answers) {
     container.replaceChildren(); const doc = container.ownerDocument || root.document;
-    container.appendChild(el(doc, 'h3', 'Deine Antworten je Frage'));
+    container.appendChild(el(doc, 'h3', 'Deine Antworten'));
     questions.forEach((q, i) => {
       const n = answers[i], ok = n === q.correct;
       const detail = el(doc, 'details', undefined, 'result-detail');
@@ -33,9 +33,9 @@
   }
   function renderClass(container, questions, roster) {
     const report = stats(questions, roster), doc = container.ownerDocument || root.document;
-    container.replaceChildren(); container.appendChild(el(doc, 'h3', 'Auswertung je Frage'));
-    container.appendChild(el(doc, 'p', report.included + ' fertige Quizze mit Antwortdaten.' + (report.missing ? ' ' + report.missing + ' ältere Ergebnisse ohne Antwortdaten.' : '') + ' Fragen mit den meisten Fehlern stehen zuerst.', 'hint'));
-    if (!report.included) { container.appendChild(el(doc, 'p', 'Die Auswertung erscheint, sobald jemand sein Quiz beendet hat.', 'small')); return report; }
+    container.replaceChildren(); container.appendChild(el(doc, 'h3', 'Ergebnisse pro Frage'));
+    container.appendChild(el(doc, 'p', report.included + ' Personen haben ihr Quiz beendet.' + (report.missing ? ' ' + report.missing + ' ältere Ergebnisse enthalten keine einzelnen Antworten.' : '') + ' Fragen mit vielen Fehlern stehen oben.', 'hint'));
+    if (!report.included) { container.appendChild(el(doc, 'p', 'Die Ergebnisse kommen, wenn jemand sein Quiz beendet hat.', 'small')); return report; }
     report.rows.forEach(row => {
       const detail = el(doc, 'details', undefined, 'result-detail');
       detail.appendChild(el(doc, 'summary', 'Frage ' + (row.index + 1) + ' · ' + row.percent + '% richtig · ' + row.question.q));
@@ -47,7 +47,7 @@
   function csv(questions, roster) {
     const report = stats(questions, roster);
     const cell = value => '"' + String(value ?? '').replace(/^\s*[=+@-]/, "'$&").replace(/"/g, '""') + '"';
-    return '\ufeff' + [['Frage', 'Text', 'Richtige Antwort', 'Ausgewertete Quizze', 'Richtig', 'Richtig %', 'Antwort 1', 'Antwort 2', 'Antwort 3', 'Antwort 4', 'Zeit abgelaufen'],
+    return '\ufeff' + [['Frage', 'Text', 'Richtige Antwort', 'Personen mit fertigem Quiz', 'Richtig', 'Richtig in Prozent', 'Antwort 1', 'Antwort 2', 'Antwort 3', 'Antwort 4', 'Zeit abgelaufen'],
       ...report.rows.map(r => [r.index + 1, r.question.q, r.question.options[r.question.correct], r.total, r.right, r.percent, ...r.counts, r.timedOut])]
       .map(row => row.map(cell).join(';')).join('\r\n');
   }

@@ -62,7 +62,7 @@ test('text API preserves the full source, verifies evidence and never fetches we
       await handler({ method: 'POST', body: { sourceText: facts.join(' '), count: 3 } }, res);
       assert.equal(res.statusCode, 502);
       assert.equal(res.body.ai, undefined);
-      assert.match(res.body.details, /KI hat gerade kein ausreichend belegtes und geprüftes Quiz/);
+      assert.match(res.body.details, /KI konnte die Fragen und Antworten nicht sicher prüfen/);
       assert.doesNotMatch(res.body.details, /mehr Lerntext/);
     });
     await t.test('a provider outage does not blame a complete learning text', async () => {
@@ -134,7 +134,7 @@ test('a text class shares only its finished questions, with named guests making 
   guest.context.fetch = () => { throw new Error('Students do not call AI'); };
   await guest.element('start').onclick();
   assert.equal(guest.element('question').textContent, quiz.questions[0].q);
-  assert.equal(teacher.element('participantCount').textContent, '1 beigetreten · 1 verbunden');
+  assert.equal(teacher.element('participantCount').textContent, '1 Person ist dabei · 1 verbunden');
   teacher.element('closeClass').onclick();
   assert.equal(teacher.element('sourceText').disabled, false);
 });

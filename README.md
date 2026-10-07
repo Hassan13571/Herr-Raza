@@ -2,6 +2,10 @@
 
 Deutschsprachige Quiz-App mit bis zu 50 Fragen, eigenem Lerntext, optionalen Bildern, Vorlesen, Offline-HTML und gemeinsamem QR-Klassenquiz.
 
+## Einfache Sprache
+
+Die App verwendet kurze, klare Texte und bekannte Wörter. Auch die KI erhält diese Vorgabe für Fragen, Antworten und Erklärungen. Nötige Fachwörter sollen kurz erklärt werden. Die gewählte fachliche Schwierigkeit bleibt erhalten. Fakten, Zahlen, Einheiten und wörtliche Belege dürfen dabei nicht verändert werden.
+
 ## Quiz erstellen und prüfen
 
 Thema oder Lerntext eingeben. PDF und JPG/PNG/WebP lassen sich im Browser einlesen; bei gescannten Seiten läuft die deutsche und englische Texterkennung auf dem Gerät. Erst nach Kontrolle über „Als Lerntext übernehmen“ oder „An Lerntext anhängen“ wird der Text ins Quizformular übernommen. Dateien werden dabei nicht auf einen Server hochgeladen. Bei der anschließenden KI-Erstellung wird der übernommene Lerntext wie bisher an die Quiz-API gesendet.

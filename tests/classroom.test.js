@@ -31,7 +31,7 @@ test('wrong room keys and blank names cannot create participants', async () => {
   const Peer = fakePeers(), host = new Host(Peer), guest = new Guest(Peer);
   try {
     await host.open(quiz, {}, key, room);
-    await assert.rejects(guest.join({ room, key: 'wrong-1234567890123456', name: 'Mia', id: 'student-1234567890123456' }), /Beitritt/);
+    await assert.rejects(guest.join({ room, key: 'wrong-1234567890123456', name: 'Mia', id: 'student-1234567890123456' }), /nicht beitreten/);
     assert.equal(host.roster().length, 0);
     await assert.rejects(guest.join({ room, key, name: '   ', id: 'student-1234567890123456' }), /Namen/);
     assert.equal(host.roster().length, 0);

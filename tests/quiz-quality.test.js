@@ -82,7 +82,7 @@ test('a rejected or unavailable review cannot leak the draft or trigger an unche
     }, async handler => {
       const res = response(); await handler({ ...request(10), body: { ...request(10).body, sourceText: facts.join(' ') + ' ' + sourceText } }, res);
       assert.equal(res.statusCode, 502); assert.equal(res.body.questions, undefined); assert.equal(res.body.ai, undefined);
-      if (kind === 'rejected') assert.match(res.body.details, /Themen- und Antwortprüfung/);
+      if (kind === 'rejected') assert.match(res.body.details, /Fragen konnten sicher geprüft werden/);
       assert.equal(calls, 2);
     });
   });
@@ -98,7 +98,7 @@ test('prices are checked again before review and a newly paid model cannot appro
     const res = response(); await handler(request(5), res);
     assert.equal(res.statusCode, 502); assert.equal(res.body.questions, undefined);
     assert.equal(catalogs, 2); assert.equal(generations, 1);
-    assert.match(res.body.details, /kein kostenloses Textmodell/);
+    assert.match(res.body.details, /keine kostenlose KI/);
   });
 });
 
@@ -127,7 +127,7 @@ test('the public label reflects review completion and an honest partial count', 
   const app = fixture({ quiz: { topic: 'Pflanzenzelle', questions: valid(), requestedCount: 50, ai: { connected: true, modelName: 'Free' }, quality: { reviewed: true, checked: 7, rejected: 4 } } });
   await app.element('start').onclick();
   if (!app.element('preview').classList.contains('hide')) await app.element('previewPlay').onclick();
-  assert.match(app.element('generation').textContent, /auf Thema und Antworten geprüft/);
+  assert.match(app.element('generation').textContent, /Thema und Antworten wurden geprüft/);
   assert.match(app.element('generation').textContent, /3 von 50/);
   assert.doesNotMatch(app.element('generation').textContent, /ergänzt durch/);
 });

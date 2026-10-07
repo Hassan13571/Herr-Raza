@@ -17,8 +17,8 @@ test('photo OCR worker is reused and terminated, and low confidence is disclosed
 });
 test('cancellation terminates OCR and cannot return a partial replacement; bad files and oversized text fail clearly', async () => {
   const controller = new AbortController(); let terminated = 0;
-  await assert.rejects(extract([new File(['photo'], 'foto.png')], { signal: controller.signal, imageCanvas: async () => ({}), createWorker: async () => ({ recognize: async () => { controller.abort(); return { data: { text: 'partial' } }; }, terminate: async () => { terminated++; } }) }), /abgebrochen/);
-  assert.ok(terminated > 0); assert.throws(() => validateFiles([new File(['x'], 'x.svg')]), /Unterstützt/);
+  await assert.rejects(extract([new File(['photo'], 'foto.png')], { signal: controller.signal, imageCanvas: async () => ({}), createWorker: async () => ({ recognize: async () => { controller.abort(); return { data: { text: 'partial' } }; }, terminate: async () => { terminated++; } }) }), /Abgebrochen/);
+  assert.ok(terminated > 0); assert.throws(() => validateFiles([new File(['x'], 'x.svg')]), /Bitte wähle/);
   assert.throws(() => combine('x'.repeat(60000), 'new', true), /60.000/);
   assert.equal(combine('Mein Text', 'Mehr Text', true), 'Mein Text\n\nMehr Text'); assert.equal(combine('Alt', 'Neu'), 'Neu');
   assert.equal(pageText([{ str: 'Zeile 1', hasEOL: true }, { str: 'Zeile 2', hasEOL: false }]), 'Zeile 1\nZeile 2');

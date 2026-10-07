@@ -56,7 +56,7 @@ test('class join requires a name before connecting', async () => {
   app.element('nickname').value = '';
   await app.element('start').onclick();
   if (!app.element('preview').classList.contains('hide')) await app.element('previewPlay').onclick();
-  assert.match(app.element('status').textContent, /Namen oder Spitznamen/);
+  assert.match(app.element('status').textContent, /gib deinen Namen ein/);
   assert.ok(app.element('quizSettings').classList.contains('hide'));
   assert.equal(app.element('nickname').required, true);
 });
@@ -74,7 +74,7 @@ test('teacher UI lists named students and sends one shared quiz without addition
   first.context.fetch = second.context.fetch = () => { throw new Error('Students must receive the teacher quiz'); };
   first.element('nickname').value = 'Mia'; second.element('nickname').value = 'Ali';
   await Promise.all([first.element('start').onclick(), second.element('start').onclick()]);
-  assert.equal(teacher.element('participantCount').textContent, '2 beigetreten · 2 verbunden');
+  assert.equal(teacher.element('participantCount').textContent, '2 Personen sind dabei · 2 verbunden');
   assert.deepEqual(teacher.element('participantList').children.map(row => row.children[0].children[0].textContent).sort(), ['Ali', 'Mia']);
   assert.equal(first.element('question').textContent, quiz.questions[0].q);
   assert.equal(second.element('question').textContent, quiz.questions[0].q);

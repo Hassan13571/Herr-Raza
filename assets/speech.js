@@ -26,7 +26,7 @@
     function read(question, answers) {
       stop();
       if (!synthesis || !Utterance) {
-        options.onError?.('Dieser Browser unterstützt kein Vorlesen.');
+        options.onError?.('Dieser Browser kann die Fragen nicht vorlesen.');
         return;
       }
       const list = segments(question, answers), run = generation;
@@ -46,7 +46,7 @@
         current.onerror = event => {
           if (run !== generation || event.error === 'canceled' || event.error === 'interrupted') return;
           stop();
-          options.onError?.('Das Vorlesen ist unterbrochen. Bitte erneut starten.');
+          options.onError?.('Das Vorlesen wurde gestoppt. Bitte starte es noch einmal.');
         };
         state(list[index].label);
         synthesis.speak(current);
