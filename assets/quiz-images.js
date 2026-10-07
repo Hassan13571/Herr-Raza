@@ -9,15 +9,19 @@
   function commonsUrl(value) {
     try {
       const url = new URL(value);
-      if (url.protocol !== 'https:' || url.hostname !== 'upload.wikimedia.org' || url.port || url.username || url.password || url.search || url.hash) return '';
+      if (url.protocol !== 'https:' || !['upload.wikimedia.org','thumb.wikimedia.org'].includes(url.hostname) || url.port || url.username || url.password || url.hash) return '';
+      if ([...url.searchParams.keys()].some(key => !['utm_source','utm_campaign','utm_content'].includes(key))) return '';
       if (!/^\/wikipedia\/commons\/(?:thumb\/)?[a-f0-9]\/[a-f0-9]{2}\/.+\.(?:jpe?g|png|webp)$/i.test(url.pathname) || /%2f|%5c|%0[0-9a-f]|%1[0-9a-f]/i.test(url.pathname)) return '';
+      url.search = '';
       return url.href;
     } catch { return ''; }
   }
   function sourceUrl(value) {
     try {
       const url = new URL(value);
-      return url.protocol === 'https:' && url.hostname === 'commons.wikimedia.org' && !url.port && !url.username && !url.password && !url.search && !url.hash && /^\/wiki\/File(?::|%3A).+/i.test(url.pathname) ? url.href : '';
+      if ([...url.searchParams.keys()].some(key => !['utm_source','utm_campaign','utm_content'].includes(key))) return '';
+      url.search = '';
+      return url.protocol === 'https:' && url.hostname === 'commons.wikimedia.org' && !url.port && !url.username && !url.password && !url.hash && /^\/wiki\/File(?::|%3A).+/i.test(url.pathname) ? url.href : '';
     } catch { return ''; }
   }
   function licenseUrl(value) {

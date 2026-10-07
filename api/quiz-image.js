@@ -7,7 +7,16 @@ module.exports = async function handler(req, res) {
   const url = typeof req.query?.url === 'string' && req.query.url.length <= 1600 && Images.commonsUrl(req.query.url);
   if (!url) return res.status(400).end();
   try {
-    const response = await fetch(url, { redirect: 'error', headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(7000) });
+    const signal = AbortSignal.timeout(7000);
+    let current = url, response;
+    for (let hop=0;hop<3;hop++) {
+      response = await fetch(current, { redirect: 'manual', headers: { 'User-Agent': USER_AGENT }, signal });
+      if (![301,302,303,307,308].includes(response.status)) break;
+      const location = response.headers.get('location');
+      current = location && Images.commonsUrl(new URL(location, current).href);
+      await response.body?.cancel();
+      if (!current || hop===2) return res.status(502).end();
+    }
     if (!response.ok) return res.status(response.status === 429 ? 429 : 502).end();
     const length = Number(response.headers.get('content-length'));
     if (length > Images.MAX_BYTES) return res.status(413).end();

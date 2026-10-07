@@ -22,6 +22,11 @@ test('picture search keeps individual free licenses and plain creator attributio
   const publicDomain = candidate(page('Public domain'), 'plant cell');
   assert.equal(publicDomain.license, 'Public domain');
   assert.match(publicDomain.licenseUrl, /publicdomain\/mark/);
+  const current = page();
+  current.imageinfo[0].thumburl = 'https://thumb.wikimedia.org/wikipedia/commons/thumb/9/93/Stromboli_Eruption.jpg/500px-Stromboli_Eruption.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail';
+  const normalized = candidate(current, 'volcanic eruption');
+  assert.equal(normalized.url, current.imageinfo[0].thumburl.split('?')[0]);
+  assert.equal(normalized.url.includes('utm_'), false);
   const calls = [];
   const result = await searchImages(['plant cell'], async url => { calls.push(url); return { ok: true, json: async () => ({ query: { pages: [page('CC BY-NC 4.0'), page()] } }) }; });
   assert.deepEqual(result, [{ query: 'plant cell', image }]);
@@ -60,7 +65,7 @@ test('image proxy allows bounded raster bytes and refuses redirects, SVG and ove
       const res = response(); await handler({ method: 'GET', query: { url: 'https://localhost/secret.jpg' } }, res); assert.equal(res.statusCode, 400);
     });
     await t.test('valid bytes have a verified content type and cache headers', async () => {
-      global.fetch = async (url, options) => { assert.equal(url, image.url); assert.equal(options.redirect, 'error'); return new Response(png, { headers: { 'Content-Type': 'image/png' } }); };
+      global.fetch = async (url, options) => { assert.equal(url, image.url); assert.equal(options.redirect, 'manual'); return new Response(png, { headers: { 'Content-Type': 'image/png' } }); };
       const res = response(); await handler({ method: 'GET', query: { url: image.url } }, res);
       assert.equal(res.statusCode, 200); assert.deepEqual(res.body, png); assert.equal(res.headers['Content-Type'], 'image/png'); assert.match(res.headers['Cache-Control'], /s-maxage/);
     });
@@ -69,6 +74,14 @@ test('image proxy allows bounded raster bytes and refuses redirects, SVG and ove
       let res = response(); await handler({ method: 'GET', query: { url: image.url } }, res); assert.equal(res.statusCode, 415);
       global.fetch = async () => new Response(new Uint8Array(Images.MAX_BYTES+1), { headers: { 'Content-Type': 'image/png' } });
       res = response(); await handler({ method: 'GET', query: { url: image.url } }, res); assert.equal(res.statusCode, 413);
+    });
+    await t.test('only validated Commons redirects can be followed', async () => {
+      let calls = 0;
+      global.fetch = async () => { calls++; return new Response(null, { status: 302, headers: { Location: 'https://example.test/secret.jpg' } }); };
+      let res = response(); await handler({ method: 'GET', query: { url: image.url } }, res); assert.equal(res.statusCode, 502); assert.equal(calls, 1);
+      calls = 0; const thumbnail = image.url.replace('upload.', 'thumb.');
+      global.fetch = async url => { calls++; return url === image.url ? new Response(null, { status: 302, headers: { Location: thumbnail } }) : new Response(png, { headers: { 'Content-Type': 'image/png' } }); };
+      res = response(); await handler({ method: 'GET', query: { url: image.url } }, res); assert.equal(res.statusCode, 200); assert.equal(calls, 2);
     });
   } finally { global.fetch = originalFetch; }
 });
