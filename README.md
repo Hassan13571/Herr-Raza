@@ -12,6 +12,8 @@ Thema oder Lerntext eingeben. PDF und JPG/PNG/WebP lassen sich im Browser einles
 
 Neue Quizze öffnen zunächst die Fragenvorschau. Dort können Titel, Fragen, vier Antworten, richtige Antwort, Erklärung, Reihenfolge und Bilder bearbeitet werden. Unvollständige Fragen verhindern Start, Speicherung und Export. Änderungen an Inhalten entfernen veraltete Quellenbelege und die Kennzeichnung als KI-geprüft. Eigene Quizze können auch ohne KI angelegt werden.
 
+Die unabhängige KI-Prüfung bewertet die einfache Sprache der erstellten Fragen, Antworten und Erklärungen. Wörtliche Quellenbelege bleiben unverändert und werden getrennt auf ihre Aussage geprüft. Auch ein oder zwei vollständig geprüfte Fragen können verwendet werden. Die App zeigt die tatsächliche Zahl im Verhältnis zur gewünschten Zahl; sie ergänzt keine ungeprüften Füllfragen. Bei einer Ablehnung protokolliert der Server nur Anzahlen und Kriterien, keine Lerntexte oder Fragen.
+
 ## Sammlung und Sicherung
 
 Die Quiz-Sammlung verwendet den lokalen Browserspeicher; sie ist kein geräteübergreifendes Konto. Quizze lassen sich suchen, erneut öffnen, bearbeiten, archivieren und wiederherstellen. JSON-Sicherungen können über „Quiz importieren“ auf anderen Geräten geöffnet werden. Vollständige Lerntexte werden nicht in der Sammlung oder Sicherung gespeichert. Browser-Speicherfehler werden angezeigt und überschreiben keine beschädigte Sammlung.
@@ -30,6 +32,6 @@ PDF.js 6.4.299 (Apache-2.0) und Tesseract.js 7.0.0 (Apache-2.0) werden beim Impo
 
 ## Prüfen
 
-Node.js 24, `npm ci`, anschließend `npm test`. Die 81 Tests prüfen die KI-Preis- und Qualitätsgrenzen, komplette Quizze mit 50 Fragen, Bildlizenzen, Offline-Spiel, Vorschau und Bearbeitung, Sammlung und Sicherungen, echte PDF-Texterkennung, Import-Abbruch sowie Klassenergebnisse mit ursprünglichen Antwortindizes. Sie prüfen auch die tatsächliche Punkteanzeige, verspätete Verbindungsereignisse, ungültige Ergebnisnachrichten und den Schutz vor alten Texten nach einem fehlgeschlagenen Import. Nicht lesbare Seiten werden ausdrücklich gemeldet.
+Node.js 24, `npm ci`, anschließend `npm test`. Die 86 Tests prüfen die KI-Preis- und Qualitätsgrenzen, komplette Quizze mit 50 Fragen, Bildlizenzen, Offline-Spiel, Vorschau und Bearbeitung, Sammlung und Sicherungen, echte PDF-Texterkennung, Import-Abbruch sowie Klassenergebnisse mit ursprünglichen Antwortindizes. Sie prüfen auch die tatsächliche Punkteanzeige, verspätete Verbindungsereignisse, ungültige Ergebnisnachrichten und den Schutz vor alten Texten nach einem fehlgeschlagenen Import. Nicht lesbare Seiten werden ausdrücklich gemeldet. Die Quellenbelege und vollständig geprüfte Teilquizze sind zusätzlich abgesichert.
 
 Vor dem Unterricht das fertige Quiz prüfen und als HTML speichern. So kann es auch bei einem Ausfall der kostenlosen KI offline gespielt werden. Der Klassenmodus braucht Internet; die Lehrerseite muss offen bleiben. Automatische Tests und die KI-Prüfung ersetzen keine fachliche Prüfung der Fragen durch die Lehrkraft.

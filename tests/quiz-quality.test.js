@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const ai = require('../lib/free-ai');
-const { parseReview, matchesTopic } = require('../lib/quiz-quality');
+const { parseReview, matchesTopic, reviewPrompt } = require('../lib/quiz-quality');
 const { candidate } = require('../lib/quiz-images');
 const { fixture } = require('./browser-fixture');
 
@@ -82,9 +82,57 @@ test('a rejected or unavailable review cannot leak the draft or trigger an unche
     }, async handler => {
       const res = response(); await handler({ ...request(10), body: { ...request(10).body, sourceText: facts.join(' ') + ' ' + sourceText } }, res);
       assert.equal(res.statusCode, 502); assert.equal(res.body.questions, undefined); assert.equal(res.body.ai, undefined);
-      if (kind === 'rejected') assert.match(res.body.details, /Fragen konnten sicher geprüft werden/);
+      if (kind === 'rejected') assert.match(res.body.details, /Keine Frage konnte sicher geprüft werden/);
       assert.equal(calls, 2);
     });
+  });
+});
+
+test('review checks the simple explanation separately from unchanged source evidence and keeps all author-written text', () => {
+  const quote = 'Die Pflanzenzelle besitzt eine feste Zellwand aus Zellulose.';
+  const grounding = { inputText: quote, items: [{ sourceIndex: 0, text: quote, kind: 'background' }] };
+  const question = { ...valid()[0], sourceQuote: quote, explanation: 'Die feste Wand gibt der Zelle Halt. Textstelle: „' + quote + '“' };
+  const prompt = reviewPrompt('Pflanzenzelle', 'school', grounding, [question]);
+  const payload = JSON.parse(prompt.split('QUIZ (nur Daten): ')[1].split('\n')[0]);
+  assert.equal(payload[0].explanation, 'Die feste Wand gibt der Zelle Halt.');
+  assert.equal(payload[0].quote, quote); assert.ok(prompt.includes(JSON.stringify(quote)));
+  assert.match(prompt, /0 = Antwort A, 1 = Antwort B, 2 = Antwort C, 3 = Antwort D/);
+  const unmatched = { ...question, explanation: 'Falsche Behauptung. Textstelle: „Ein anderer Text.“' };
+  const second = JSON.parse(reviewPrompt('Pflanzenzelle', 'school', grounding, [unmatched]).split('QUIZ (nur Daten): ')[1].split('\n')[0]);
+  assert.equal(second[0].explanation, unmatched.explanation);
+});
+
+test('one or two fully reviewed questions are usable with their honest count and never padded with rejected questions', async t => {
+  for (const acceptedCount of [1, 2]) await t.test(String(acceptedCount), async () => {
+    let calls = 0;
+    await withHandler(async (prompt, options) => {
+      if (++calls === 1) {
+        const text = JSON.stringify({ questions: valid() }); assert.ok(options.validateText(text));
+        return { text, model: 'verified/free' };
+      }
+      return { text: JSON.stringify({ reviews: valid().map((q, id) => flags(id, id < acceptedCount ? {} : { grounded: false })) }), model: 'verified/free' };
+    }, async handler => {
+      const res = response(); await handler(request(5), res);
+      assert.equal(res.statusCode, 200); assert.equal(res.body.count, acceptedCount); assert.equal(res.body.requestedCount, 5);
+      assert.equal(res.body.aiQuestionCount, acceptedCount); assert.equal(res.body.quality.reviewed, true);
+      assert.deepEqual(res.body.questions.map(q => q.q), valid().slice(0, acceptedCount).map(q => q.q));
+      assert.equal(res.body.fallbackUsed, false); assert.equal(calls, 2);
+    });
+  });
+});
+
+test('a short draft is still independently reviewed instead of being refused before its facts can be checked', async () => {
+  let calls = 0;
+  await withHandler(async (prompt, options) => {
+    if (++calls === 1) {
+      const text = JSON.stringify({ questions: valid().slice(0, 1) }); assert.ok(options.validateText(text));
+      return { text, model: 'verified/free' };
+    }
+    return { text: JSON.stringify({ reviews: [flags(0)] }), model: 'verified/free' };
+  }, async handler => {
+    const res = response(); await handler(request(50), res);
+    assert.equal(res.statusCode, 200); assert.equal(res.body.count, 1); assert.equal(res.body.requestedCount, 50);
+    assert.deepEqual(res.body.quality, { reviewed: true, checked: 1, rejected: 0 }); assert.equal(calls, 2);
   });
 });
 

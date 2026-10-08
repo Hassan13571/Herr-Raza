@@ -372,18 +372,18 @@ function makePrompt(topic,count,difficulty,mode,grounding,includeImages=false){
 async function createQuiz(topic,count,difficulty,mode,sourceText='',includeImages=false){
   const grounding=sourceText?textGrounding(sourceText):await buildGrounding(topic,mode);
   const parse=text=>parseQuizText(text,count,grounding,includeImages);
-  const validateDraft=text=>{const reasons={},accepted=parseQuizText(text,count,grounding,includeImages,reasons).length;if(accepted<Math.min(3,count))console.warn('quiz-validation',JSON.stringify({stage:'draft',accepted,reasons}));return accepted>=Math.min(3,count);};
+  const validateDraft=text=>{const reasons={},accepted=parseQuizText(text,count,grounding,includeImages,reasons).length;if(!accepted)console.warn('quiz-validation',JSON.stringify({stage:'draft',accepted,reasons}));return accepted>0;};
   const deadline=AbortSignal.timeout(count>15?250000:62000);
   let questions=[];
   let fallbackUsed=false,ai=null,aiError=null,reviewStarted=false,quality={reviewed:false,checked:0,rejected:0};
   try{
     ai=await generateFreeText(makePrompt(topic,count,difficulty,mode,grounding,includeImages),{instructions:QUIZ_INSTRUCTIONS,maxOutputTokens:Math.max(3000,count*(sourceText?650:500)),signal:AbortSignal.any([deadline,AbortSignal.timeout(count>15?225000:39000)]),attemptTimeoutMs:count>15?220000:29000,validateText:validateDraft});
     questions=parse(ai.text);
-    if(questions.length<Math.min(3,count))throw new FreeAIError('invalid_response','Die KI konnte keine passenden Fragen erstellen. Bitte versuche es noch einmal.');
+    if(!questions.length)throw new FreeAIError('invalid_response','Die KI konnte keine passenden Fragen erstellen. Bitte versuche es noch einmal.');
     reviewStarted=true;
     const reviewed=await reviewQuestions({topic,mode,grounding,questions,generate:generateFreeText,signal:AbortSignal.any([deadline,AbortSignal.timeout(count>15?45000:22000)]),attemptTimeoutMs:count>15?35000:18000});
     questions=reviewed.questions;quality=reviewed.quality;
-    if(questions.length<Math.min(3,count))throw new FreeAIError('quality_rejected','Zu wenige Fragen konnten sicher geprüft werden. Bitte versuche es noch einmal. Oder füge mehr Text hinzu.');
+    if(!questions.length)throw new FreeAIError('quality_rejected','Keine Frage konnte sicher geprüft werden. Bitte versuche es noch einmal. Oder füge mehr Text hinzu.');
   }catch(e){questions=[];aiError=publicAIError(e);console.warn('ai-primary',JSON.stringify({code:aiError.code}));}
   const aiQuestionCount=questions.length;
   // Never mix accepted AI questions with automatic filler. A failed semantic
@@ -393,7 +393,7 @@ async function createQuiz(topic,count,difficulty,mode,sourceText='',includeImage
     if(fallback.length)fallbackUsed=true;
     questions.push(...fallback);
   }
-  if(questions.length<Math.min(3,count)){
+  if(!questions.length||fallbackUsed&&questions.length<Math.min(3,count)){
     if(aiError&&(sourceText||reviewStarted))throw new FreeAIError(aiError.code,aiError.code==='invalid_response'?'Die KI konnte die Fragen und Antworten nicht sicher prüfen. Bitte versuche es noch einmal.':aiError.message);
     throw new Error(sourceText?'In deinem Text stehen zu wenige passende Informationen. Bitte füge mehr Text hinzu.':'Die App konnte zu wenige sichere Fragen finden. Bitte versuche es noch einmal.');
   }
