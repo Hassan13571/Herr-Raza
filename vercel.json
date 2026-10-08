@@ -1,5 +1,6 @@
 {
   "buildCommand": "npm run build",
+  "outputDirectory": "public",
   "functions": {
     "api/quiz.js": { "maxDuration": 270 },
     "api/quiz-material.js": { "maxDuration": 20 },

@@ -1,2 +1,3 @@
 node_modules/
 assets/local-ai-runtime.mjs
+/public/
