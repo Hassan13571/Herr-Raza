@@ -81,7 +81,8 @@ test('a rejected or unavailable review cannot leak the draft or trigger an unche
       return { text: JSON.stringify({ reviews: kind === 'incomplete' ? [flags(0)] : valid().map((q,n) => flags(n, { answerCorrect: false })) }), model: 'verified/free' };
     }, async handler => {
       const res = response(); await handler({ ...request(10), body: { ...request(10).body, sourceText: facts.join(' ') + ' ' + sourceText } }, res);
-      assert.equal(res.statusCode, 502); assert.equal(res.body.questions, undefined); assert.equal(res.body.ai, undefined);
+      assert.equal(res.statusCode, kind === 'quota' ? 429 : 502); assert.equal(res.body.questions, undefined); assert.equal(res.body.ai, undefined);
+      if (kind === 'quota') { assert.equal(res.body.code, 'quota'); assert.equal(res.body.retryAfter, 60); }
       if (kind === 'rejected') assert.match(res.body.details, /Keine Frage konnte sicher geprüft werden/);
       assert.equal(calls, 2);
     });

@@ -93,6 +93,22 @@ test('invalid answer format tries another free model before reporting success', 
   assert.equal(calls.length,2);
 });
 
+test('quota retains provider wait time and the topic API reports the cause when sources are unavailable', async () => {
+  const client = ai.createFreeAI({ fetcher: catalog([freeModel]), generate: async () => { throw Object.assign(new Error('private error'), { statusCode: 429, responseHeaders: { 'retry-after': '120' } }); } });
+  await assert.rejects(client.generateFreeText('Test'), error => error.code === 'quota' && error.retryAfter === 120);
+  const originalGenerate = ai.generateFreeText, originalFetch = global.fetch;
+  try {
+    ai.generateFreeText = async () => { throw new ai.FreeAIError('quota', 'Die KI hat ihr Anfragelimit erreicht.', 120); };
+    global.fetch = async () => { throw new Error('Sources unavailable'); };
+    delete require.cache[require.resolve('../api/quiz')];
+    const handler = require('../api/quiz'), res = response();
+    await handler({ method: 'POST', body: { topic: 'Pflanzen', count: 5 } }, res);
+    assert.equal(res.statusCode, 429); assert.equal(res.body.code, 'quota');
+    assert.equal(res.headers['Retry-After'], '120'); assert.equal(res.body.retryAfter, 120);
+    assert.match(res.body.details, /Anfragelimit/); assert.doesNotMatch(res.body.details, /wenige sichere/);
+  } finally { ai.generateFreeText = originalGenerate; global.fetch = originalFetch; delete require.cache[require.resolve('../api/quiz')]; }
+});
+
 test('temporary provider outage gets one bounded retry', async () => {
   let calls=0;
   const client=ai.createFreeAI({fetcher:catalog([freeModel]),generate:async()=>{

@@ -20,6 +20,7 @@
 <script src="/assets/classroom.js" defer></script>
 <link rel="stylesheet" href="/assets/studio.css">
 <script src="/assets/studio.js" defer></script>
+<script src="/assets/quiz-request.js" defer></script>
 <script src="/assets/material-import.js" defer></script>
 </head>
 <body><main class="wrap"><div class="top"><div class="brand">🎓 Herr Raza Quiz</div><div class="badge">Lernen mit Quizfragen</div></div>
@@ -62,7 +63,9 @@ let attemptAnswers=[],displayedAnswers=[],lastQuiz=null,lastQuizKey='',host=null
 const reader=RazaSpeech.createReader({onState:(playing,label)=>{$('speak').textContent=playing?'⏹ Vorlesen stoppen':'🔊 Vorlesen';$('speechStatus').textContent=playing?'Vorlesen: '+label+' · Die Zeit läuft dabei nicht weiter.':''},onError:message=>{$('speechStatus').textContent=message}});
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function show(id){reader.stop();['setup','preview','quiz','done'].forEach(x=>$(x).classList.toggle('hide',x!==id));scrollTo(0,0)}
-async function loadQuiz(topic,count,difficulty,mode,sourceText){const images=$('images').checked,r=await fetch('/api/quiz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic,count,difficulty,mode,sourceText,images}),signal:AbortSignal.timeout(Number(count)>15?268000:78000)});const d=await r.json();if(!r.ok)throw new Error(d.details||d.error||'Serverfehler');if(images){$('status').textContent='Passende Bilder werden geladen …';return RazaQuizImages.enrich(d)}return d}
+let requestStorage;try{requestStorage=sessionStorage}catch{}
+const quizRequests=RazaQuizRequest.create({storage:requestStorage,fetcher:(...args)=>fetch(...args),normalize:RazaStudio.normalizeQuiz});
+async function loadQuiz(topic,count,difficulty,mode,sourceText){const images=$('images').checked,d=await quizRequests.load({topic,count,difficulty,mode,sourceText,images});if(images){$('status').textContent='Passende Bilder werden geladen …';return RazaQuizImages.enrich(d)}return d}
 function generationLabel(d){let label;if(d.edited)return '✏️ Du hast dieses Quiz selbst geschrieben oder geändert. Prüfe die Fragen und Antworten.';if(!d.ai?.connected)label='ℹ Dieses Quiz kommt aus Texten. Ohne KI. '+(d.warning||'Die KI ist gerade nicht erreichbar.');else{const name=d.ai.modelName||'Kostenlose KI';label='✨ Quiz mit KI erstellt: '+name+' · Kostenlos.';if(d.quality?.reviewed)label+=' Thema und Antworten wurden geprüft.';if(d.warning)label+=' '+d.warning}if(d.requestedCount>d.questions.length)label+=' '+d.questions.length+' von '+d.requestedCount+' Fragen sind fertig.';return label}
 function creatingLabel(){const count=Number($('count').value);return count>15?count+' Fragen werden erstellt und geprüft. Das kann ein paar Minuten dauern …':'Deine Fragen werden erstellt. Die Antworten werden auch geprüft …'}
 function quizKey(){return JSON.stringify([$('topic').value.trim(),$('sourceText').value.trim(),$('count').value,$('difficulty').value,$('mode').value,$('images').checked])}
@@ -74,7 +77,7 @@ async function start({download=false}={}){
  if($('start').disabled)return;if(material.running){$('status').textContent='Bitte warte, bis der Text fertig ist. Oder tippe auf „Abbrechen“.';return;}
  if(roomParams&&!$('nickname').value.trim()){$('status').textContent='Bitte gib deinen Namen ein. Dann sieht deine Lehrkraft, dass du dabei bist.';$('nickname').focus();return}
  setBusy(true);$('status').textContent=roomParams?'Du trittst der Klasse bei …':creatingLabel();
- try{let d;if(roomParams){const joined=await connectGuest();applySettings(joined.settings);d=joined.quiz}else d=await ownQuiz();if(roomParams||host&&!host.closed){rememberQuiz(d,d.topic);show('quiz');render();if(download)await downloadCurrentQuiz()}else studio.open(d,{purpose:download?'download':'play'});$('status').textContent='Die Fragen sind fertig. Bitte prüfe sie.'}catch(e){$('status').textContent='Fehler: '+(e.name==='TimeoutError'?'Der Server hat zu lange gebraucht.':e.message)+' Bitte versuche es noch einmal.'}finally{setBusy(false)}
+ try{let d;if(roomParams){const joined=await connectGuest();applySettings(joined.settings);d=joined.quiz}else d=await ownQuiz();if(roomParams||host&&!host.closed){rememberQuiz(d,d.topic);show('quiz');render();if(download)await downloadCurrentQuiz()}else studio.open(d,{purpose:download?'download':'play'});$('status').textContent='Die Fragen sind fertig. Bitte prüfe sie.'}catch(e){$('status').textContent=e.name==='TimeoutError'?'Der Server hat zu lange gebraucht. Bitte versuche es später noch einmal.':e.message}finally{setBusy(false)}
 }
 function sourceHTML(q){const label=esc(q.source||'Quelle');if(q.sourceUrl&&/^https?:\/\//.test(q.sourceUrl))return '<a href="'+esc(q.sourceUrl)+'" target="_blank" rel="noopener">'+label+' ↗</a>';return label}
 function mix(a){for(let x=a.length-1;x>0;x--){const y=Math.floor(Math.random()*(x+1));[a[x],a[y]]=[a[y],a[x]]}return a}

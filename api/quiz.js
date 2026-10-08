@@ -394,7 +394,7 @@ async function createQuiz(topic,count,difficulty,mode,sourceText='',includeImage
     questions.push(...fallback);
   }
   if(!questions.length||fallbackUsed&&questions.length<Math.min(3,count)){
-    if(aiError&&(sourceText||reviewStarted))throw new FreeAIError(aiError.code,aiError.code==='invalid_response'?'Die KI konnte die Fragen und Antworten nicht sicher prüfen. Bitte versuche es noch einmal.':aiError.message);
+    if(aiError)throw new FreeAIError(aiError.code,aiError.code==='invalid_response'?'Die KI konnte die Fragen und Antworten nicht sicher prüfen. Bitte versuche es noch einmal.':aiError.message,aiError.retryAfter);
     throw new Error(sourceText?'In deinem Text stehen zu wenige passende Informationen. Bitte füge mehr Text hinzu.':'Die App konnte zu wenige sichere Fragen finden. Bitte versuche es noch einmal.');
   }
   return {questions:questions.slice(0,count),requestedCount:count,fallbackUsed,aiQuestionCount,quality,
@@ -434,7 +434,9 @@ module.exports=async function handler(req,res){
     console.info('quiz-result',JSON.stringify({engine,model:result.ai.model,aiQuestionCount:result.aiQuestionCount,count:result.questions.length,quality:result.quality}));
     return res.status(200).json({topic,count:result.questions.length,difficulty,mode,inputType:sourceText?'text':'topic',...result,engine});
   }catch(err){
-    console.error('quiz-error',err);
-    return res.status(502).json({error:'Das Quiz konnte gerade nicht erstellt werden.',details:String(err&&err.message||err)});
+    const failure=publicAIError(err);
+    console.error('quiz-error',JSON.stringify({code:failure.code}));
+    if(failure.code==='quota')res.setHeader('Retry-After',String(failure.retryAfter));
+    return res.status(failure.code==='quota'?429:502).json({error:'Das Quiz konnte gerade nicht erstellt werden.',details:err instanceof FreeAIError?failure.message:String(err&&err.message||err),code:failure.code,...(failure.retryAfter?{retryAfter:failure.retryAfter}:{})});
   }
 };
