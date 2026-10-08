@@ -1,6 +1,8 @@
 {
+  "buildCommand": "npm run build",
   "functions": {
     "api/quiz.js": { "maxDuration": 270 },
+    "api/quiz-material.js": { "maxDuration": 20 },
     "api/ai-status.js": { "maxDuration": 60 },
     "api/quiz-images.js": { "maxDuration": 15 },
     "api/quiz-image.js": { "maxDuration": 10 }

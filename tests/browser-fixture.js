@@ -35,7 +35,7 @@ function fixture({ quiz, url = 'https://quiz.test/', Peer, storage = new Map() }
     fetch: async () => ({ ok: true, json: async () => quiz }), AbortSignal, btoa: value => Buffer.from(value, 'binary').toString('base64'), scrollTo() {}, console, prompt() {} };
   context.window = { RazaRelay: { Peer } };
   vm.createContext(context);
-  for (const file of ['speech.js', 'quiz-images.js', 'quiz-results.js', 'classroom.js', 'studio.js', 'quiz-request.js', 'material-import.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets', file), 'utf8'), context);
+  for (const file of ['speech.js', 'quiz-images.js', 'quiz-results.js', 'classroom.js', 'studio.js', 'quiz-request.js', 'quiz-core.js', 'quiz-quality.js', 'local-ai.js', 'local-quiz.js', 'material-import.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../assets', file), 'utf8'), context);
   const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
   const script = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m => m[1]).find(s => s.includes('function downloadCurrentQuiz'));
   vm.runInContext(script, context);

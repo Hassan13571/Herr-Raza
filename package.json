@@ -3,15 +3,18 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "build": "esbuild lib/local-ai-worker.mjs --bundle --format=esm --minify --outfile=assets/local-ai-runtime.mjs"
   },
   "engines": {
     "node": "24.x"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "0.2.85",
     "ai": "^7.0.0"
   },
   "devDependencies": {
+    "esbuild": "0.28.2",
     "pdfjs-dist": "6.4.299",
     "tesseract.js": "7.0.0"
   }
